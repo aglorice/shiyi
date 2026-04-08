@@ -25,7 +25,9 @@ class _SchedulePageState extends ConsumerState<SchedulePage> {
   int _effectiveWeek(ScheduleSnapshot snapshot) {
     final preferences = ref.read(appPreferencesControllerProvider);
     final candidate =
-        _selectedWeek ?? preferences.computedScheduleWeek ?? snapshot.displayWeek;
+        _selectedWeek ??
+        preferences.computedScheduleWeek ??
+        snapshot.displayWeek;
     if (candidate < 1) {
       return 1;
     }
@@ -85,41 +87,69 @@ class _SchedulePageState extends ConsumerState<SchedulePage> {
               child: RefreshIndicator(
                 onRefresh: () =>
                     ref.read(scheduleControllerProvider.notifier).refresh(),
-                child: ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-                  children: [
-                    if (_viewMode == _ScheduleViewMode.week) ...[
-                      _WeekTimetable(
-                        entries: filteredEntries,
-                        showAllWeeks: _showAllWeeks,
-                        showWeekends: preferences.showWeekends,
-                        onOpenDetail: (entry) =>
-                            _openCourseDetail(snapshot, entry),
-                      ),
-                    ] else ...[
-                      _TodayHeader(
-                        weekLabel: weekFilterLabel,
-                        entries: todayEntries,
-                        todayWeekday: todayWeekday,
-                      ),
-                      const SizedBox(height: 16),
-                      if (todayEntries.isEmpty)
-                        const _EmptyTodayState()
-                      else
-                        ...todayEntries.map(
-                          (entry) => Padding(
-                            padding: const EdgeInsets.only(bottom: 14),
-                            child: _CourseTile(
-                              entry: entry,
-                              colorSeed: todayWeekday,
-                              onTap: () => _openCourseDetail(snapshot, entry),
-                            ),
+                child: _viewMode == _ScheduleViewMode.week
+                    ? LayoutBuilder(
+                        builder: (context, constraints) {
+                          final viewportHeight = constraints.hasBoundedHeight
+                              ? constraints.maxHeight
+                              : MediaQuery.sizeOf(context).height * 0.72;
+                          final contentHeight = viewportHeight > 20
+                              ? viewportHeight - 20
+                              : viewportHeight;
+
+                          return CustomScrollView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            slivers: [
+                              SliverPadding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  12,
+                                  8,
+                                  12,
+                                  12,
+                                ),
+                                sliver: SliverToBoxAdapter(
+                                  child: SizedBox(
+                                    height: contentHeight,
+                                    child: _WeekTimetable(
+                                      entries: filteredEntries,
+                                      showAllWeeks: _showAllWeeks,
+                                      showWeekends: preferences.showWeekends,
+                                      onOpenDetail: (entry) =>
+                                          _openCourseDetail(snapshot, entry),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      )
+                    : ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+                        children: [
+                          _TodayHeader(
+                            weekLabel: weekFilterLabel,
+                            entries: todayEntries,
+                            todayWeekday: todayWeekday,
                           ),
-                        ),
-                    ],
-                  ],
-                ),
+                          const SizedBox(height: 16),
+                          if (todayEntries.isEmpty)
+                            const _EmptyTodayState()
+                          else
+                            ...todayEntries.map(
+                              (entry) => Padding(
+                                padding: const EdgeInsets.only(bottom: 14),
+                                child: _CourseTile(
+                                  entry: entry,
+                                  colorSeed: todayWeekday,
+                                  onTap: () =>
+                                      _openCourseDetail(snapshot, entry),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
               ),
             ),
           ],
@@ -530,11 +560,14 @@ class _WeekTimetable extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        const sideWidth = 42.0;
-        const gap = 3.0;
-        const rowHeight = 64.0;
-        const headerHeight = 40.0;
-        const minDayWidth = 52.0;
+        final viewportHeight = constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : MediaQuery.sizeOf(context).height * 0.68;
+        final compactHeight = viewportHeight < 620;
+        final sideWidth = compactHeight ? 36.0 : 42.0;
+        final gap = compactHeight ? 2.0 : 3.0;
+        final headerHeight = compactHeight ? 34.0 : 40.0;
+        final minDayWidth = compactHeight ? 48.0 : 52.0;
         final availableWidth = constraints.maxWidth;
         final columnGaps = dayCount - 1;
         final computedDayWidth =
@@ -544,6 +577,14 @@ class _WeekTimetable extends StatelessWidget {
             : minDayWidth;
         final boardWidth = sideWidth + dayWidth * dayCount + gap * columnGaps;
         final needsScroll = boardWidth > availableWidth;
+        final hintHeight = needsScroll ? (compactHeight ? 16.0 : 18.0) : 0.0;
+        final hintTopPadding = needsScroll ? (compactHeight ? 6.0 : 8.0) : 0.0;
+        final availableBodyHeight =
+            viewportHeight - headerHeight - hintHeight - hintTopPadding;
+        final rawRowHeight =
+            (availableBodyHeight - (model.slotCount - 1) * gap) /
+            model.slotCount;
+        final rowHeight = rawRowHeight.clamp(24.0, 64.0).toDouble();
         final bodyHeight =
             model.slotCount * rowHeight + (model.slotCount - 1) * gap;
         final dayOffsets = <int, double>{
@@ -566,18 +607,19 @@ class _WeekTimetable extends StatelessWidget {
             children: [
               if (needsScroll)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+                  padding: EdgeInsets.fromLTRB(10, hintTopPadding, 10, 0),
                   child: Row(
                     children: [
                       Icon(
                         Icons.swipe_rounded,
-                        size: 14,
+                        size: compactHeight ? 13 : 14,
                         color: colorScheme.onSurfaceVariant,
                       ),
-                      const SizedBox(width: 4),
+                      SizedBox(width: compactHeight ? 3 : 4),
                       Text(
                         '左右滑动查看完整课表',
                         style: theme.textTheme.labelSmall?.copyWith(
+                          fontSize: compactHeight ? 10 : null,
                           color: colorScheme.onSurfaceVariant,
                         ),
                       ),
@@ -742,11 +784,19 @@ class _SectionLabel extends StatelessWidget {
       height: height,
       color: Theme.of(context).colorScheme.surfaceContainerLow,
       alignment: Alignment.center,
-      child: Text(
-        text,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          fontWeight: FontWeight.w700,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            text,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            maxLines: 1,
+            textAlign: TextAlign.center,
+          ),
         ),
       ),
     );
@@ -801,41 +851,51 @@ class _WeekCourseCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: accent.withValues(alpha: 0.22)),
           ),
-          padding: const EdgeInsets.fromLTRB(5, 5, 5, 5),
           child: LayoutBuilder(
             builder: (context, constraints) {
               final textTheme = Theme.of(context).textTheme;
-              final displayText = _weekCardDisplayText(entries, textTheme);
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 3,
-                    height: constraints.maxHeight - 10,
-                    margin: const EdgeInsets.only(right: 5),
-                    decoration: BoxDecoration(
-                      color: accent,
-                      borderRadius: BorderRadius.circular(2),
+              final compact =
+                  constraints.maxHeight < 42 || constraints.maxWidth < 70;
+              final displayText = _weekCardDisplayText(
+                entries,
+                textTheme,
+                compact: compact,
+              );
+
+              return Padding(
+                padding: EdgeInsets.all(compact ? 4 : 5),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 3,
+                      height: constraints.maxHeight - (compact ? 8 : 10),
+                      margin: EdgeInsets.only(right: compact ? 4 : 5),
+                      decoration: BoxDecoration(
+                        color: accent,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: Center(
-                      child: AutoSizeText.rich(
-                        displayText,
-                        minFontSize: 8,
-                        maxFontSize: 12,
-                        maxLines: 6,
-                        overflow: TextOverflow.ellipsis,
-                        style: textTheme.labelSmall?.copyWith(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF1F3436),
-                          height: 1.2,
+                    Expanded(
+                      child: Center(
+                        child: AutoSizeText.rich(
+                          displayText,
+                          minFontSize: compact ? 8.5 : 9,
+                          maxFontSize: compact ? 12.5 : 13.5,
+                          stepGranularity: 0.5,
+                          maxLines: 6,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.labelSmall?.copyWith(
+                            fontSize: compact ? 10.5 : 11,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF1F3436),
+                            height: compact ? 1.16 : 1.18,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               );
             },
           ),
@@ -847,8 +907,9 @@ class _WeekCourseCard extends StatelessWidget {
 
 TextSpan _weekCardDisplayText(
   List<ScheduleEntry> entries,
-  TextTheme textTheme,
-) {
+  TextTheme textTheme, {
+  required bool compact,
+}) {
   final representative = entries.first;
   final teachers = _displayTeachers(entries);
   final locations = _displayLocations(entries);
@@ -862,20 +923,20 @@ TextSpan _weekCardDisplayText(
       TextSpan(
         text: representative.course.name.trim(),
         style: textTheme.labelMedium?.copyWith(
-          fontSize: 12,
+          fontSize: compact ? 12.6 : 13.2,
           fontWeight: FontWeight.w700,
           color: const Color(0xFF1F3436),
-          height: 1.15,
+          height: compact ? 1.12 : 1.14,
         ),
       ),
       if (secondaryLines.isNotEmpty)
         TextSpan(
           text: '\n${secondaryLines.join('\n')}',
           style: textTheme.labelSmall?.copyWith(
-            fontSize: 9.5,
+            fontSize: compact ? 9.6 : 10.1,
             fontWeight: FontWeight.w600,
             color: const Color(0xFF42595B),
-            height: 1.2,
+            height: compact ? 1.14 : 1.18,
           ),
         ),
     ],
