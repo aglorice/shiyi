@@ -76,27 +76,72 @@ class _CampusShellState extends ConsumerState<CampusShell> {
     });
 
     final authAsync = ref.watch(authControllerProvider);
+    if (authAsync.isLoading) {
+      return const Scaffold(
+        body: SafeArea(
+          bottom: false,
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+
+    final width = MediaQuery.sizeOf(context).width;
+    final useRail = width >= 600;
+
+    if (useRail) {
+      return Scaffold(
+        body: SafeArea(
+          bottom: false,
+          child: Row(
+            children: [
+              NavigationRail(
+                selectedIndex: widget.navigationShell.currentIndex,
+                onDestinationSelected: (index) {
+                  widget.navigationShell.goBranch(
+                    index,
+                    initialLocation:
+                        index == widget.navigationShell.currentIndex,
+                  );
+                },
+                labelType: NavigationRailLabelType.all,
+                destinations: [
+                  for (final d in _destinations)
+                    NavigationRailDestination(
+                      icon: Icon(d.icon),
+                      selectedIcon: Icon(d.selectedIcon),
+                      label: Text(d.label),
+                    ),
+                ],
+              ),
+              const VerticalDivider(thickness: 1, width: 1),
+              Expanded(child: widget.navigationShell),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: authAsync.isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : widget.navigationShell,
+        child: widget.navigationShell,
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        minimum: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-        child: _ShellNavigationBar(
-          destinations: _destinations,
-          currentIndex: widget.navigationShell.currentIndex,
-          onSelected: (index) {
-            widget.navigationShell.goBranch(
-              index,
-              initialLocation: index == widget.navigationShell.currentIndex,
-            );
-          },
-        ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: widget.navigationShell.currentIndex,
+        onDestinationSelected: (index) {
+          widget.navigationShell.goBranch(
+            index,
+            initialLocation: index == widget.navigationShell.currentIndex,
+          );
+        },
+        destinations: [
+          for (final d in _destinations)
+            NavigationDestination(
+              icon: Icon(d.icon),
+              selectedIcon: Icon(d.selectedIcon),
+              label: d.label,
+            ),
+        ],
       ),
     );
   }
@@ -112,131 +157,6 @@ class _CampusDestination {
   final String label;
   final IconData icon;
   final IconData selectedIcon;
-}
-
-class _ShellNavigationBar extends StatelessWidget {
-  const _ShellNavigationBar({
-    required this.destinations,
-    required this.currentIndex,
-    required this.onSelected,
-  });
-
-  final List<_CampusDestination> destinations;
-  final int currentIndex;
-  final ValueChanged<int> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: isDark
-            ? colorScheme.surfaceContainerLow
-            : Colors.white.withValues(alpha: 0.94),
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.8),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-        child: Row(
-          children: [
-            for (var index = 0; index < destinations.length; index++)
-              Expanded(
-                child: _ShellNavigationItem(
-                  destination: destinations[index],
-                  selected: index == currentIndex,
-                  onTap: () => onSelected(index),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ShellNavigationItem extends StatelessWidget {
-  const _ShellNavigationItem({
-    required this.destination,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final _CampusDestination destination;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            color: selected
-                ? colorScheme.primaryContainer.withValues(alpha: 0.38)
-                : Colors.transparent,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOutCubic,
-                width: selected ? 42 : 36,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: selected
-                      ? colorScheme.primary.withValues(alpha: 0.12)
-                      : colorScheme.surfaceContainerHigh.withValues(
-                          alpha: 0.45,
-                        ),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  selected ? destination.selectedIcon : destination.icon,
-                  size: 20,
-                  color: selected
-                      ? colorScheme.primary
-                      : colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 6),
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOutCubic,
-                style:
-                    theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                      color: selected
-                          ? colorScheme.onSurface
-                          : colorScheme.onSurfaceVariant,
-                      letterSpacing: selected ? 0.15 : 0.05,
-                    ) ??
-                    const TextStyle(),
-                child: Text(destination.label),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _AnimatedBranchNavigatorContainer extends StatefulWidget {

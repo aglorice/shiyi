@@ -1,5 +1,8 @@
+import 'dart:math';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../shared/widgets/pixel_pet.dart';
 import '../di/app_providers.dart';
 import 'app_preferences.dart';
 
@@ -11,9 +14,16 @@ final appPreferencesControllerProvider =
 class AppPreferencesController extends Notifier<AppPreferences> {
   @override
   AppPreferences build() {
-    return AppPreferences.fromSharedPreferences(
+    final prefs = AppPreferences.fromSharedPreferences(
       ref.read(sharedPreferencesProvider),
     );
+    if (prefs.pixelPet == null) {
+      final random = Random();
+      final pet = PixelPetType.values[random.nextInt(PixelPetType.values.length)];
+      Future.microtask(() => _update(prefs.copyWith(pixelPet: pet.name)));
+      return prefs.copyWith(pixelPet: pet.name);
+    }
+    return prefs;
   }
 
   Future<void> setThemePreset(AppThemePreset value) async {

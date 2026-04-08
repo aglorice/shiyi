@@ -56,6 +56,7 @@ class AppPreferences {
     this.showWeekends = true,
     this.scheduleWeekNumber,
     this.scheduleWeekSetDate,
+    this.pixelPet,
   });
 
   final AppThemePreset themePreset;
@@ -71,6 +72,9 @@ class AppPreferences {
 
   /// The date (ISO 8601) when [scheduleWeekNumber] was set.
   final String? scheduleWeekSetDate;
+
+  /// The pixel pet assigned to this user (random on first launch).
+  final String? pixelPet;
 
   /// Computes the current week number based on the saved reference.
   ///
@@ -99,6 +103,7 @@ class AppPreferences {
     bool? showWeekends,
     int? scheduleWeekNumber,
     String? scheduleWeekSetDate,
+    String? pixelPet,
   }) {
     return AppPreferences(
       themePreset: themePreset ?? this.themePreset,
@@ -110,6 +115,7 @@ class AppPreferences {
       showWeekends: showWeekends ?? this.showWeekends,
       scheduleWeekNumber: scheduleWeekNumber ?? this.scheduleWeekNumber,
       scheduleWeekSetDate: scheduleWeekSetDate ?? this.scheduleWeekSetDate,
+      pixelPet: pixelPet ?? this.pixelPet,
     );
   }
 
@@ -122,6 +128,7 @@ class AppPreferences {
   static const _showWeekendsKey = 'app.schedule.showWeekends';
   static const _scheduleWeekNumberKey = 'app.schedule.weekNumber';
   static const _scheduleWeekSetDateKey = 'app.schedule.weekSetDate';
+  static const _pixelPetKey = 'app.ui.pixelPet';
 
   factory AppPreferences.fromSharedPreferences(SharedPreferences preferences) {
     return AppPreferences(
@@ -136,6 +143,7 @@ class AppPreferences {
       showWeekends: preferences.getBool(_showWeekendsKey) ?? true,
       scheduleWeekNumber: preferences.getInt(_scheduleWeekNumberKey),
       scheduleWeekSetDate: preferences.getString(_scheduleWeekSetDateKey),
+      pixelPet: preferences.getString(_pixelPetKey),
     );
   }
 
@@ -156,6 +164,11 @@ class AppPreferences {
       await preferences.setString(_scheduleWeekSetDateKey, scheduleWeekSetDate!);
     } else {
       await preferences.remove(_scheduleWeekSetDateKey);
+    }
+    if (pixelPet != null) {
+      await preferences.setString(_pixelPetKey, pixelPet!);
+    } else {
+      await preferences.remove(_pixelPetKey);
     }
   }
 
