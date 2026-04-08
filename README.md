@@ -1,104 +1,83 @@
-# Uni Yi
+<div align="center">
+  <img src="assets/logo/pixel_cat_logo_1024.png" width="120" height="120" alt="拾邑 Logo">
 
-五邑大学一站式校园助手 App，基于 Flutter 构建，支持 Android、iOS、Web、macOS、Windows、Linux 多平台。
+  <h1>拾邑</h1>
 
-## 功能
+  <p><strong>All-in-one campus assistant for Wuyi University</strong></p>
 
-- **统一身份认证** — 通过学校 SSO 统一登录，安全存储凭证
-- **课程表** — 按周/今日查看课程安排，支持多学期切换
-- **成绩查询** — 查看各学期成绩信息
-- **考试安排** — 查看考试时间、地点等信息
-- **体育馆预约** — 查看场地并在线预约
-- **电费查询** — 监控宿舍用电情况
-- **个人主页** — 主题切换、字体调节、深色模式等个性化设置
+  <p>
+    <img src="https://img.shields.io/badge/Flutter-3.29+-02569B?style=flat-square&logo=flutter" alt="Flutter">
+    <img src="https://img.shields.io/badge/Dart-3.9+-0175C2?style=flat-square&logo=dart" alt="Dart">
+    <img src="https://img.shields.io/badge/Platform-Android%20%7C%20iOS%20%7C%20Web%20%7C%20Desktop-4CAF50?style=flat-square" alt="Platform">
+    <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" alt="License">
+  </p>
 
-## 技术栈
+  <p>
+    <a href="#features">Features</a> •
+    <a href="#screenshots">Screenshots</a> •
+    <a href="#getting-started">Getting Started</a> •
+    <a href="#tech-stack">Tech Stack</a> •
+    <a href="#project-structure">Project Structure</a>
+  </p>
 
-| 类别 | 技术 |
-| --- | --- |
-| 框架 | Flutter 3.29+ (Dart 3.9+) |
-| 状态管理 | Riverpod |
-| 路由 | GoRouter |
-| 网络请求 | Dio |
-| 本地存储 | SharedPreferences + FlutterSecureStorage |
-| 加密 | encrypt (AES) |
-| 架构 | Clean Architecture + 领域驱动设计 |
+  <p>
+    <a href="README_CN.md">中文文档</a>
+  </p>
+</div>
 
-## 项目结构
+---
 
-```
-lib/
-├── main.dart                  # 应用入口
-├── app/                       # 应用配置
-│   ├── bootstrap/             # 初始化
-│   ├── di/                    # 依赖注入
-│   ├── router/                # 路由
-│   ├── settings/              # 偏好设置
-│   ├── shell/                 # 导航外壳
-│   └── theme/                 # 主题
-├── core/                      # 核心工具
-│   ├── error/                 # 错误处理
-│   ├── logging/               # 日志
-│   ├── models/                # 基础模型
-│   ├── network/               # 网络层
-│   ├── result/                # Result 模式
-│   └── storage/               # 存储工具
-├── integrations/              # 外部集成
-│   └── school_portal/         # 学校教务系统集成
-│       ├── clients/           # API 客户端
-│       ├── dto/               # 数据传输对象
-│       ├── mappers/           # 数据映射
-│       ├── parsers/           # 响应解析
-│       └── sso/               # SSO 认证
-├── modules/                   # 功能模块
-│   ├── auth/                  # 认证
-│   ├── electricity/           # 电费
-│   ├── exams/                 # 考试
-│   ├── grades/                # 成绩
-│   ├── gym_booking/           # 体育馆预约
-│   ├── home/                  # 首页
-│   ├── profile/               # 个人中心
-│   └── schedule/              # 课程表
-└── shared/                    # 共享组件
-```
+**拾邑** (Shí Yì) is a campus assistant app designed for students at Wuyi University (五邑大学). It integrates academic information, campus services, and daily utilities into one cohesive experience.
 
-## 开发
+> 拾取校园点滴，邑你相伴同行。
 
-### 环境要求
+## Features
+
+- **Unified Authentication** — Secure SSO login via the university portal, credentials stored locally with AES encryption
+- **Class Schedule** — Weekly and daily views with semester switching
+- **Grades** — Semester-by-semester grade queries
+- **Exams** — Exam schedule with time and location details
+- **Campus Notices** — Categorized university announcements and newsletters
+- **Electricity Monitor** — Real-time dormitory electricity balance and recharge history
+- **Gym Booking** — Browse venues and book time slots online
+- **Campus Services** — One-stop portal for all school web services
+- **Personalization** — Theme colors, font presets, compact mode, dark mode, and high contrast support
+
+## Screenshots
+
+> TODO: Add screenshots here
+
+## Getting Started
+
+### Prerequisites
 
 - Flutter SDK >= 3.29.0
 - Dart SDK >= 3.9.2
-- Android Studio / VS Code
-- Android SDK (Android 开发)
-- Xcode 15+ (iOS/macOS 开发，仅 macOS)
+- Android Studio or VS Code
+- Android SDK (for Android builds)
+- Xcode 15+ (for iOS/macOS builds, macOS only)
 
-### 快速开始
+### Installation
 
 ```bash
-# 克隆项目
+# Clone the repository
 git clone https://github.com/<your-username>/uni_yi.git
 cd uni_yi
 
-# 安装依赖
+# Install dependencies
 flutter pub get
 
-# 运行
+# Run the app
 flutter run
-
-# 运行测试
-flutter test
-
-# 代码分析
-flutter analyze
 ```
 
-### 构建
+### Build
 
 ```bash
 # Android APK
 flutter build apk
 
-# Android App Bundle (上架 Play Store)
+# Android App Bundle (for Play Store)
 flutter build appbundle --release
 
 # iOS
@@ -107,24 +86,79 @@ flutter build ios --release
 # Web
 flutter build web
 
-# macOS / Windows / Linux
+# Desktop
 flutter build macos
 flutter build windows
 flutter build linux
 ```
 
-## 发布
+## Tech Stack
 
-项目使用 GitHub Actions 自动构建和发布。推送 tag 即可触发：
+| Category | Technology |
+| --- | --- |
+| Framework | Flutter 3.29+ / Dart 3.9+ |
+| State Management | Riverpod |
+| Routing | GoRouter |
+| Networking | Dio |
+| Local Storage | SharedPreferences + FlutterSecureStorage |
+| Encryption | encrypt (AES) |
+| Architecture | Clean Architecture / Feature-first |
 
-```bash
-# 创建并推送版本标签
-git tag v1.0.0
-git push origin v1.0.0
+## Project Structure
+
+```
+lib/
+├── main.dart                  # App entry point
+├── app/                       # App-level configuration
+│   ├── bootstrap/             # Initialization
+│   ├── di/                    # Dependency injection
+│   ├── router/                # Routing
+│   ├── settings/              # Preferences
+│   ├── shell/                 # Navigation shell
+│   └── theme/                 # Theming
+├── core/                      # Core utilities
+│   ├── error/                 # Error handling & display
+│   ├── logging/               # Logging
+│   ├── models/                # Base models
+│   ├── network/               # Network layer
+│   ├── result/                # Result pattern
+│   └── storage/               # Storage helpers
+├── integrations/              # External integrations
+│   └── school_portal/         # University portal integration
+│       ├── clients/           # API clients
+│       ├── dto/               # Data transfer objects
+│       ├── mappers/           # Data mapping
+│       ├── parsers/           # Response parsing
+│       └── sso/               # SSO authentication
+├── modules/                   # Feature modules
+│   ├── auth/                  # Authentication
+│   ├── electricity/           # Electricity monitoring
+│   ├── exams/                 # Exam schedule
+│   ├── grades/                # Grades
+│   ├── gym_booking/           # Gym booking
+│   ├── home/                  # Home page
+│   ├── notices/               # Campus notices
+│   ├── profile/               # Profile & settings
+│   └── schedule/              # Class schedule
+└── shared/                    # Shared widgets & utilities
 ```
 
-Workflow 会自动构建 Android APK 并创建 GitHub Release。
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
-本项目仅供学习和研究使用。
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+
+---
+
+<div align="center">
+  <sub>Built with ❤️ for Wuyi University students</sub>
+</div>
