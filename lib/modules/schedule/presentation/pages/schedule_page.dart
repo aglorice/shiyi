@@ -23,7 +23,9 @@ class _SchedulePageState extends ConsumerState<SchedulePage> {
   int? _selectedWeek;
 
   int _effectiveWeek(ScheduleSnapshot snapshot) {
-    final candidate = _selectedWeek ?? snapshot.displayWeek;
+    final preferences = ref.read(appPreferencesControllerProvider);
+    final candidate =
+        _selectedWeek ?? preferences.computedScheduleWeek ?? snapshot.displayWeek;
     if (candidate < 1) {
       return 1;
     }
@@ -334,6 +336,9 @@ class _SchedulePageState extends ConsumerState<SchedulePage> {
       } else {
         _showAllWeeks = false;
         _selectedWeek = selectedWeek;
+        ref
+            .read(appPreferencesControllerProvider.notifier)
+            .setScheduleWeek(selectedWeek);
       }
     });
   }

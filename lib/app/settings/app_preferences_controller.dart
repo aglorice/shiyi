@@ -44,6 +44,16 @@ class AppPreferencesController extends Notifier<AppPreferences> {
     await _update(state.copyWith(showWeekends: value));
   }
 
+  Future<void> setScheduleWeek(int weekNumber) async {
+    final today = DateTime.now();
+    final dateStr =
+        '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+    await _update(state.copyWith(
+      scheduleWeekNumber: weekNumber,
+      scheduleWeekSetDate: dateStr,
+    ));
+  }
+
   Future<void> reset() async {
     await _update(const AppPreferences());
   }

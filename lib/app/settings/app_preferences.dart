@@ -54,6 +54,8 @@ class AppPreferences {
     this.compactMode = false,
     this.highContrast = false,
     this.showWeekends = true,
+    this.scheduleWeekNumber,
+    this.scheduleWeekSetDate,
   });
 
   final AppThemePreset themePreset;
@@ -63,6 +65,25 @@ class AppPreferences {
   final bool compactMode;
   final bool highContrast;
   final bool showWeekends;
+
+  /// The week number the user manually set.
+  final int? scheduleWeekNumber;
+
+  /// The date (ISO 8601) when [scheduleWeekNumber] was set.
+  final String? scheduleWeekSetDate;
+
+  /// Computes the current week number based on the saved reference.
+  ///
+  /// Returns `null` if no reference was ever set.
+  int? get computedScheduleWeek {
+    if (scheduleWeekNumber == null || scheduleWeekSetDate == null) {
+      return null;
+    }
+    final refDate = DateTime.tryParse(scheduleWeekSetDate!);
+    if (refDate == null) return scheduleWeekNumber;
+    final diff = DateTime.now().difference(refDate).inDays;
+    return scheduleWeekNumber! + (diff / 7).floor();
+  }
 
   ThemeMode get themeMode => darkMode ? ThemeMode.dark : ThemeMode.light;
 
@@ -76,6 +97,8 @@ class AppPreferences {
     bool? compactMode,
     bool? highContrast,
     bool? showWeekends,
+    int? scheduleWeekNumber,
+    String? scheduleWeekSetDate,
   }) {
     return AppPreferences(
       themePreset: themePreset ?? this.themePreset,
@@ -85,6 +108,8 @@ class AppPreferences {
       compactMode: compactMode ?? this.compactMode,
       highContrast: highContrast ?? this.highContrast,
       showWeekends: showWeekends ?? this.showWeekends,
+      scheduleWeekNumber: scheduleWeekNumber ?? this.scheduleWeekNumber,
+      scheduleWeekSetDate: scheduleWeekSetDate ?? this.scheduleWeekSetDate,
     );
   }
 
@@ -95,6 +120,8 @@ class AppPreferences {
   static const _compactModeKey = 'app.ui.compactMode';
   static const _highContrastKey = 'app.ui.highContrast';
   static const _showWeekendsKey = 'app.schedule.showWeekends';
+  static const _scheduleWeekNumberKey = 'app.schedule.weekNumber';
+  static const _scheduleWeekSetDateKey = 'app.schedule.weekSetDate';
 
   factory AppPreferences.fromSharedPreferences(SharedPreferences preferences) {
     return AppPreferences(
@@ -107,6 +134,8 @@ class AppPreferences {
       compactMode: preferences.getBool(_compactModeKey) ?? false,
       highContrast: preferences.getBool(_highContrastKey) ?? false,
       showWeekends: preferences.getBool(_showWeekendsKey) ?? true,
+      scheduleWeekNumber: preferences.getInt(_scheduleWeekNumberKey),
+      scheduleWeekSetDate: preferences.getString(_scheduleWeekSetDateKey),
     );
   }
 
@@ -118,6 +147,16 @@ class AppPreferences {
     await preferences.setBool(_compactModeKey, compactMode);
     await preferences.setBool(_highContrastKey, highContrast);
     await preferences.setBool(_showWeekendsKey, showWeekends);
+    if (scheduleWeekNumber != null) {
+      await preferences.setInt(_scheduleWeekNumberKey, scheduleWeekNumber!);
+    } else {
+      await preferences.remove(_scheduleWeekNumberKey);
+    }
+    if (scheduleWeekSetDate != null) {
+      await preferences.setString(_scheduleWeekSetDateKey, scheduleWeekSetDate!);
+    } else {
+      await preferences.remove(_scheduleWeekSetDateKey);
+    }
   }
 
   static AppThemePreset _themePresetFromName(String? value) {
