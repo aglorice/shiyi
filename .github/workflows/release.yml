@@ -91,11 +91,14 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || \
-             [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || \
-             [ -z "$ANDROID_KEY_ALIAS" ] || \
-             [ -z "$ANDROID_KEY_PASSWORD" ]; then
-            echo "Android release signing secrets are missing." >&2
+          MISSING_SECRETS=""
+          [ -n "$ANDROID_KEYSTORE_BASE64" ] || MISSING_SECRETS="$MISSING_SECRETS ANDROID_KEYSTORE_BASE64"
+          [ -n "$ANDROID_KEYSTORE_PASSWORD" ] || MISSING_SECRETS="$MISSING_SECRETS ANDROID_KEYSTORE_PASSWORD"
+          [ -n "$ANDROID_KEY_ALIAS" ] || MISSING_SECRETS="$MISSING_SECRETS ANDROID_KEY_ALIAS"
+          [ -n "$ANDROID_KEY_PASSWORD" ] || MISSING_SECRETS="$MISSING_SECRETS ANDROID_KEY_PASSWORD"
+
+          if [ -n "$MISSING_SECRETS" ]; then
+            echo "Missing GitHub Actions secrets:$MISSING_SECRETS" >&2
             exit 1
           fi
 
