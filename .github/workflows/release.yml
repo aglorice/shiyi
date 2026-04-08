@@ -154,20 +154,25 @@ jobs:
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: Uni Yi ${{ needs.prepare.outputs.tag }}
+          name: 拾邑 ${{ needs.prepare.outputs.tag }}
           body: |
+            ## What's Changed
+
+            ${{ steps.changelog.outputs.commits }}
+
+            ---
+
             ## 更新内容
 
             ${{ steps.changelog.outputs.commits }}
 
-            ## 下载
+            ## Downloads
 
-            | 文件 | SHA1 | 说明 |
+            | File | SHA1 | Description |
             | --- | --- | --- |
-            | `app-release.apk` | `${{ steps.apk_sha1.outputs.sha1 }}` | Android 通用 APK |
-            | `app-release.apk.sha1` | 同上 | APK 的 SHA1 校验文件 |
+            | `app-release.apk` | `${{ steps.apk_sha1.outputs.sha1 }}` | Universal Android APK |
 
-            **完整安装包和校验文件请查看下方 Assets。**
+            See **Assets** below for the full package and checksum file.
           files: |
             artifacts/app-release.apk
             artifacts/app-release.apk.sha1
