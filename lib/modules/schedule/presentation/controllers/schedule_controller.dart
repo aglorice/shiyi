@@ -23,9 +23,17 @@ class ScheduleController extends AsyncNotifier<ScheduleSnapshot> {
     if (_selectedTermId == termId && state.value != null) {
       return;
     }
+    final previousTermId = _selectedTermId;
+    final previousState = state;
     _selectedTermId = termId;
     state = const AsyncLoading();
-    state = await AsyncValue.guard(() => _load(forceRefresh: true));
+    final newState = await AsyncValue.guard(() => _load(forceRefresh: true));
+    if (newState is AsyncError && previousState is AsyncData<ScheduleSnapshot>) {
+      _selectedTermId = previousTermId;
+      state = previousState;
+    } else {
+      state = newState;
+    }
   }
 
   Future<void> refresh() async {

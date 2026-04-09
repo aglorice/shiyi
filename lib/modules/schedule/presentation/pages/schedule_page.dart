@@ -257,6 +257,13 @@ class _SchedulePageState extends ConsumerState<SchedulePage> {
     if (!mounted) {
       return;
     }
+    final currentState = ref.read(scheduleControllerProvider);
+    if (currentState is AsyncError) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('该学期课表加载失败，已恢复到之前的学期')),
+      );
+      return;
+    }
     setState(() {
       _showAllWeeks = false;
       _selectedWeek = null;
