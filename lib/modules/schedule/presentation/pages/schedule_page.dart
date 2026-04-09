@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../app/settings/app_preferences_controller.dart';
+import '../../../../shared/widgets/app_snackbar.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../domain/entities/schedule_snapshot.dart';
 import '../controllers/schedule_controller.dart';
@@ -259,8 +260,10 @@ class _SchedulePageState extends ConsumerState<SchedulePage> {
     }
     final currentState = ref.read(scheduleControllerProvider);
     if (currentState is AsyncError) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('该学期课表加载失败，已恢复到之前的学期')),
+      AppSnackBar.show(
+        context,
+        message: '该学期课表加载失败，已恢复到之前的学期',
+        tone: AppSnackBarTone.error,
       );
       return;
     }
