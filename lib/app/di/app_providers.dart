@@ -35,7 +35,15 @@ import '../../modules/exams/domain/repositories/exams_repository.dart';
 import '../../modules/grades/application/fetch_grades_use_case.dart';
 import '../../modules/grades/data/grades_repository_impl.dart';
 import '../../modules/grades/domain/repositories/grades_repository.dart';
+import '../../modules/gym_booking/application/cancel_gym_appointment_use_case.dart';
+import '../../modules/gym_booking/application/fetch_appointment_detail_use_case.dart';
+import '../../modules/gym_booking/application/fetch_gym_appointments_page_use_case.dart';
 import '../../modules/gym_booking/application/fetch_gym_booking_overview_use_case.dart';
+import '../../modules/gym_booking/application/fetch_gym_search_model_use_case.dart';
+import '../../modules/gym_booking/application/fetch_my_gym_appointments_use_case.dart';
+import '../../modules/gym_booking/application/fetch_venue_detail_use_case.dart';
+import '../../modules/gym_booking/application/fetch_venue_reviews_use_case.dart';
+import '../../modules/gym_booking/application/search_gym_venues_use_case.dart';
 import '../../modules/gym_booking/application/submit_gym_booking_use_case.dart';
 import '../../modules/gym_booking/data/gym_booking_repository_impl.dart';
 import '../../modules/gym_booking/domain/repositories/gym_booking_repository.dart';
@@ -237,6 +245,24 @@ final submitGymBookingUseCaseProvider = Provider<SubmitGymBookingUseCase>(
   (ref) => SubmitGymBookingUseCase(ref.watch(gymBookingRepositoryProvider)),
 );
 
+final fetchMyGymAppointmentsUseCaseProvider =
+    Provider<FetchMyGymAppointmentsUseCase>(
+      (ref) => FetchMyGymAppointmentsUseCase(
+        ref.watch(gymBookingRepositoryProvider),
+      ),
+    );
+
+final fetchGymAppointmentsPageUseCaseProvider =
+    Provider<FetchGymAppointmentsPageUseCase>(
+      (ref) => FetchGymAppointmentsPageUseCase(
+        ref.watch(gymBookingRepositoryProvider),
+      ),
+    );
+
+final searchGymVenuesUseCaseProvider = Provider<SearchGymVenuesUseCase>(
+  (ref) => SearchGymVenuesUseCase(ref.watch(gymBookingRepositoryProvider)),
+);
+
 final fetchNoticesUseCaseProvider = Provider<FetchNoticesUseCase>(
   (ref) => FetchNoticesUseCase(ref.watch(noticesRepositoryProvider)),
 );
@@ -249,4 +275,29 @@ final fetchNoticeCategoryPageUseCaseProvider =
 
 final fetchNoticeDetailUseCaseProvider = Provider<FetchNoticeDetailUseCase>(
   (ref) => FetchNoticeDetailUseCase(ref.watch(noticesRepositoryProvider)),
+);
+
+final fetchAppointmentDetailUseCaseProvider =
+    Provider<FetchAppointmentDetailUseCase>(
+      (ref) => FetchAppointmentDetailUseCase(
+        ref.watch(gymBookingRepositoryProvider),
+      ),
+    );
+
+final cancelGymAppointmentUseCaseProvider =
+    Provider<CancelGymAppointmentUseCase>(
+      (ref) =>
+          CancelGymAppointmentUseCase(ref.watch(gymBookingRepositoryProvider)),
+    );
+
+final fetchVenueDetailUseCaseProvider = Provider<FetchVenueDetailUseCase>(
+  (ref) => FetchVenueDetailUseCase(ref.watch(gymBookingRepositoryProvider)),
+);
+
+final fetchVenueReviewsUseCaseProvider = Provider<FetchVenueReviewsUseCase>(
+  (ref) => FetchVenueReviewsUseCase(ref.watch(gymBookingRepositoryProvider)),
+);
+
+final fetchGymSearchModelUseCaseProvider = Provider<FetchGymSearchModelUseCase>(
+  (ref) => FetchGymSearchModelUseCase(ref.watch(gymBookingRepositoryProvider)),
 );

@@ -24,9 +24,10 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    expect(find.text('校园总览'), findsOneWidget);
+    expect(find.text('常用入口'), findsOneWidget);
     expect(find.text('总览'), findsAtLeastNWidgets(1));
     expect(find.text('课表'), findsAtLeastNWidgets(1));
+    expect(find.text('通知'), findsAtLeastNWidgets(1));
     expect(find.text('设置'), findsAtLeastNWidgets(1));
   });
 }

@@ -8,8 +8,16 @@ class GymBookingMapper {
   GymBookingOverview map(GymBookingDto dto, DateTime fetchedAt) {
     final venues = dto.venues
         .map(
-          (venue) =>
-              Venue(id: venue.id, name: venue.name, location: venue.location),
+          (venue) => Venue(
+            id: venue.id,
+            name: venue.name,
+            location: venue.location,
+            bizWid: venue.bizWid,
+            venueType: venue.venueType,
+            department: venue.department,
+            departmentId: venue.departmentId,
+            capacity: venue.capacity,
+          ),
         )
         .toList();
 
@@ -23,6 +31,8 @@ class GymBookingMapper {
               endTime: slot.endTime,
               capacity: slot.capacity,
               remaining: slot.remaining,
+              date: slot.date,
+              weekday: slot.weekday,
               price: slot.price,
             ),
           )
@@ -46,6 +56,8 @@ class GymBookingMapper {
               slotLabel: record.slotLabel,
               date: record.date,
               status: record.status,
+              statusCode: record.statusCode,
+              canCancel: record.canCancel,
             ),
           )
           .toList(),

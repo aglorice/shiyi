@@ -29,12 +29,22 @@ class GymVenueDto {
     required this.id,
     required this.name,
     required this.location,
+    required this.bizWid,
     required this.slots,
+    this.venueType,
+    this.department,
+    this.departmentId,
+    this.capacity = 0,
   });
 
   final String id;
   final String name;
   final String location;
+  final String bizWid;
+  final String? venueType;
+  final String? department;
+  final String? departmentId;
+  final int capacity;
   final List<GymSlotDto> slots;
 }
 
@@ -45,7 +55,9 @@ class GymSlotDto {
     required this.endTime,
     required this.capacity,
     required this.remaining,
-    required this.price,
+    required this.date,
+    required this.weekday,
+    this.price = 0.0,
   });
 
   final String id;
@@ -53,6 +65,8 @@ class GymSlotDto {
   final String endTime;
   final int capacity;
   final int remaining;
+  final DateTime date;
+  final int weekday;
   final double price;
 }
 
@@ -63,6 +77,8 @@ class GymRecordDto {
     required this.slotLabel,
     required this.date,
     required this.status,
+    this.statusCode,
+    this.canCancel = false,
   });
 
   final String id;
@@ -70,4 +86,6 @@ class GymRecordDto {
   final String slotLabel;
   final DateTime date;
   final String status;
+  final String? statusCode;
+  final bool canCancel;
 }

@@ -22,6 +22,11 @@ class GymBookingParser {
               id: venue['id'] as String,
               name: venue['name'] as String,
               location: venue['location'] as String,
+              bizWid: venue['bizWid'] as String? ?? '',
+              venueType: venue['venueType'] as String?,
+              department: venue['department'] as String?,
+              departmentId: venue['departmentId'] as String?,
+              capacity: venue['capacity'] as int? ?? 0,
               slots: (venue['slots'] as List<dynamic>)
                   .map(
                     (slot) => GymSlotDto(
@@ -30,7 +35,9 @@ class GymBookingParser {
                       endTime: slot['endTime'] as String,
                       capacity: slot['capacity'] as int,
                       remaining: slot['remaining'] as int,
-                      price: (slot['price'] as num).toDouble(),
+                      date: DateTime.parse(slot['date'] as String),
+                      weekday: slot['weekday'] as int,
+                      price: (slot['price'] as num?)?.toDouble() ?? 0.0,
                     ),
                   )
                   .toList(),
@@ -46,6 +53,8 @@ class GymBookingParser {
               slotLabel: record['slotLabel'] as String,
               date: DateTime.parse(record['date'] as String),
               status: record['status'] as String,
+              statusCode: record['statusCode'] as String?,
+              canCancel: record['canCancel'] as bool? ?? false,
             ),
           )
           .toList();

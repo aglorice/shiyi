@@ -45,6 +45,22 @@ extension AppFontPresetX on AppFontPreset {
   };
 }
 
+enum GymTimePreference { morning, afternoon, evening }
+
+extension GymTimePreferenceX on GymTimePreference {
+  String get label => switch (this) {
+    GymTimePreference.morning => '上午',
+    GymTimePreference.afternoon => '下午',
+    GymTimePreference.evening => '晚上',
+  };
+
+  String get description => switch (this) {
+    GymTimePreference.morning => '优先 12:00 前开场的时段',
+    GymTimePreference.afternoon => '优先 12:00-18:00 的时段',
+    GymTimePreference.evening => '优先 18:00 后的时段',
+  };
+}
+
 class AppPreferences {
   const AppPreferences({
     this.themePreset = AppThemePreset.ocean,
@@ -57,6 +73,12 @@ class AppPreferences {
     this.scheduleWeekNumber,
     this.scheduleWeekSetDate,
     this.pixelPet,
+    this.gymPhoneNumber,
+    this.gymPreferredSportId,
+    this.gymPreferredSportLabel,
+    this.gymPreferredVenueTypeId,
+    this.gymPreferredVenueTypeLabel,
+    this.gymTimePreference,
   });
 
   final AppThemePreset themePreset;
@@ -75,6 +97,15 @@ class AppPreferences {
 
   /// The pixel pet assigned to this user (random on first launch).
   final String? pixelPet;
+
+  /// The phone number saved for gym booking.
+  final String? gymPhoneNumber;
+
+  final String? gymPreferredSportId;
+  final String? gymPreferredSportLabel;
+  final String? gymPreferredVenueTypeId;
+  final String? gymPreferredVenueTypeLabel;
+  final GymTimePreference? gymTimePreference;
 
   /// Computes the current week number based on the saved reference.
   ///
@@ -104,6 +135,16 @@ class AppPreferences {
     int? scheduleWeekNumber,
     String? scheduleWeekSetDate,
     String? pixelPet,
+    String? gymPhoneNumber,
+    String? gymPreferredSportId,
+    String? gymPreferredSportLabel,
+    String? gymPreferredVenueTypeId,
+    String? gymPreferredVenueTypeLabel,
+    GymTimePreference? gymTimePreference,
+    bool clearGymPhoneNumber = false,
+    bool clearGymPreferredSport = false,
+    bool clearGymPreferredVenueType = false,
+    bool clearGymTimePreference = false,
   }) {
     return AppPreferences(
       themePreset: themePreset ?? this.themePreset,
@@ -116,6 +157,24 @@ class AppPreferences {
       scheduleWeekNumber: scheduleWeekNumber ?? this.scheduleWeekNumber,
       scheduleWeekSetDate: scheduleWeekSetDate ?? this.scheduleWeekSetDate,
       pixelPet: pixelPet ?? this.pixelPet,
+      gymPhoneNumber: clearGymPhoneNumber
+          ? null
+          : (gymPhoneNumber ?? this.gymPhoneNumber),
+      gymPreferredSportId: clearGymPreferredSport
+          ? null
+          : (gymPreferredSportId ?? this.gymPreferredSportId),
+      gymPreferredSportLabel: clearGymPreferredSport
+          ? null
+          : (gymPreferredSportLabel ?? this.gymPreferredSportLabel),
+      gymPreferredVenueTypeId: clearGymPreferredVenueType
+          ? null
+          : (gymPreferredVenueTypeId ?? this.gymPreferredVenueTypeId),
+      gymPreferredVenueTypeLabel: clearGymPreferredVenueType
+          ? null
+          : (gymPreferredVenueTypeLabel ?? this.gymPreferredVenueTypeLabel),
+      gymTimePreference: clearGymTimePreference
+          ? null
+          : (gymTimePreference ?? this.gymTimePreference),
     );
   }
 
@@ -129,6 +188,13 @@ class AppPreferences {
   static const _scheduleWeekNumberKey = 'app.schedule.weekNumber';
   static const _scheduleWeekSetDateKey = 'app.schedule.weekSetDate';
   static const _pixelPetKey = 'app.ui.pixelPet';
+  static const _gymPhoneNumberKey = 'app.gym.phoneNumber';
+  static const _gymPreferredSportIdKey = 'app.gym.preferredSportId';
+  static const _gymPreferredSportLabelKey = 'app.gym.preferredSportLabel';
+  static const _gymPreferredVenueTypeIdKey = 'app.gym.preferredVenueTypeId';
+  static const _gymPreferredVenueTypeLabelKey =
+      'app.gym.preferredVenueTypeLabel';
+  static const _gymTimePreferenceKey = 'app.gym.timePreference';
 
   factory AppPreferences.fromSharedPreferences(SharedPreferences preferences) {
     return AppPreferences(
@@ -144,6 +210,18 @@ class AppPreferences {
       scheduleWeekNumber: preferences.getInt(_scheduleWeekNumberKey),
       scheduleWeekSetDate: preferences.getString(_scheduleWeekSetDateKey),
       pixelPet: preferences.getString(_pixelPetKey),
+      gymPhoneNumber: preferences.getString(_gymPhoneNumberKey),
+      gymPreferredSportId: preferences.getString(_gymPreferredSportIdKey),
+      gymPreferredSportLabel: preferences.getString(_gymPreferredSportLabelKey),
+      gymPreferredVenueTypeId: preferences.getString(
+        _gymPreferredVenueTypeIdKey,
+      ),
+      gymPreferredVenueTypeLabel: preferences.getString(
+        _gymPreferredVenueTypeLabelKey,
+      ),
+      gymTimePreference: _gymTimePreferenceFromName(
+        preferences.getString(_gymTimePreferenceKey),
+      ),
     );
   }
 
@@ -161,7 +239,10 @@ class AppPreferences {
       await preferences.remove(_scheduleWeekNumberKey);
     }
     if (scheduleWeekSetDate != null) {
-      await preferences.setString(_scheduleWeekSetDateKey, scheduleWeekSetDate!);
+      await preferences.setString(
+        _scheduleWeekSetDateKey,
+        scheduleWeekSetDate!,
+      );
     } else {
       await preferences.remove(_scheduleWeekSetDateKey);
     }
@@ -169,6 +250,51 @@ class AppPreferences {
       await preferences.setString(_pixelPetKey, pixelPet!);
     } else {
       await preferences.remove(_pixelPetKey);
+    }
+    if (gymPhoneNumber != null) {
+      await preferences.setString(_gymPhoneNumberKey, gymPhoneNumber!);
+    } else {
+      await preferences.remove(_gymPhoneNumberKey);
+    }
+    if (gymPreferredSportId != null) {
+      await preferences.setString(
+        _gymPreferredSportIdKey,
+        gymPreferredSportId!,
+      );
+    } else {
+      await preferences.remove(_gymPreferredSportIdKey);
+    }
+    if (gymPreferredSportLabel != null) {
+      await preferences.setString(
+        _gymPreferredSportLabelKey,
+        gymPreferredSportLabel!,
+      );
+    } else {
+      await preferences.remove(_gymPreferredSportLabelKey);
+    }
+    if (gymPreferredVenueTypeId != null) {
+      await preferences.setString(
+        _gymPreferredVenueTypeIdKey,
+        gymPreferredVenueTypeId!,
+      );
+    } else {
+      await preferences.remove(_gymPreferredVenueTypeIdKey);
+    }
+    if (gymPreferredVenueTypeLabel != null) {
+      await preferences.setString(
+        _gymPreferredVenueTypeLabelKey,
+        gymPreferredVenueTypeLabel!,
+      );
+    } else {
+      await preferences.remove(_gymPreferredVenueTypeLabelKey);
+    }
+    if (gymTimePreference != null) {
+      await preferences.setString(
+        _gymTimePreferenceKey,
+        gymTimePreference!.name,
+      );
+    } else {
+      await preferences.remove(_gymTimePreferenceKey);
     }
   }
 
@@ -192,5 +318,14 @@ class AppPreferences {
 
   static double _normalizeFontScale(double value) {
     return value.clamp(0.9, 1.2);
+  }
+
+  static GymTimePreference? _gymTimePreferenceFromName(String? value) {
+    for (final item in GymTimePreference.values) {
+      if (item.name == value) {
+        return item;
+      }
+    }
+    return null;
   }
 }

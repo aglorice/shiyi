@@ -9,6 +9,7 @@ import '../../domain/entities/electricity_dashboard.dart';
 final electricityControllerProvider =
     AsyncNotifierProvider<ElectricityController, ElectricityDashboard>(
       ElectricityController.new,
+      retry: (_, __) => null,
     );
 
 class ElectricityController extends AsyncNotifier<ElectricityDashboard> {

@@ -4,7 +4,13 @@ import '../../../core/result/result.dart';
 import '../../../core/storage/json_cache_store.dart';
 import '../../../integrations/school_portal/school_portal_gateway.dart';
 import '../../auth/domain/entities/app_session.dart';
+import '../domain/entities/appointment_detail.dart';
+import '../domain/entities/gym_appointment_page.dart';
 import '../domain/entities/gym_booking_overview.dart';
+import '../domain/entities/gym_search_filter.dart';
+import '../domain/entities/gym_venue_search_page.dart';
+import '../domain/entities/venue_detail.dart';
+import '../domain/entities/venue_review.dart';
 import '../domain/repositories/gym_booking_repository.dart';
 
 class GymBookingRepositoryImpl implements GymBookingRepository {
@@ -19,6 +25,8 @@ class GymBookingRepositoryImpl implements GymBookingRepository {
   final SchoolPortalGateway _gateway;
   final JsonCacheStore _cacheStore;
   final AppLogger _logger;
+
+  static const _appointmentsCacheKey = 'gym.my_appointments';
 
   String _cacheKey(DateTime date) {
     final normalized = DateTime(date.year, date.month, date.day);
@@ -61,11 +69,23 @@ class GymBookingRepositoryImpl implements GymBookingRepository {
       final cached = await _cacheStore.readMap(cacheKey);
       if (cached != null) {
         final overview = GymBookingOverview.fromJson(cached);
+        final targetNorm = DateTime(
+          draft.date.year,
+          draft.date.month,
+          draft.date.day,
+        );
         final updatedSlots = <String, List<BookableSlot>>{
           for (final entry in overview.slotsByVenue.entries)
             entry.key: entry.value
                 .map(
-                  (slot) => slot.id == draft.slot.id
+                  (slot) =>
+                      slot.id == draft.slot.id &&
+                          DateTime(
+                                slot.date.year,
+                                slot.date.month,
+                                slot.date.day,
+                              ) ==
+                              targetNorm
                       ? slot.copyWith(remaining: slot.remaining - 1)
                       : slot,
                 )
@@ -86,5 +106,120 @@ class GymBookingRepositoryImpl implements GymBookingRepository {
     }
 
     return FailureResult(result.failureOrNull!);
+  }
+
+  @override
+  Future<Result<List<BookingRecord>>> fetchMyAppointments({
+    required AppSession session,
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh) {
+      final cached = await _cacheStore.readMap(_appointmentsCacheKey);
+      if (cached != null) {
+        final records = (cached['records'] as List<dynamic>)
+            .map((item) => BookingRecord.fromJson(item as Map<String, dynamic>))
+            .toList();
+        _logger.debug('Using cached gym appointments count=${records.length}');
+        return Success(records);
+      }
+    }
+
+    final result = await _gateway.fetchMyGymAppointments(session);
+    if (result case Success<List<BookingRecord>>(data: final records)) {
+      await _cacheStore.writeMap(_appointmentsCacheKey, {
+        'records': records.map((r) => r.toJson()).toList(),
+      });
+      return Success(records);
+    }
+
+    final cached = await _cacheStore.readMap(_appointmentsCacheKey);
+    if (cached != null) {
+      final records = (cached['records'] as List<dynamic>)
+          .map((item) => BookingRecord.fromJson(item as Map<String, dynamic>))
+          .toList();
+      _logger.warn('Falling back to cached gym appointments.');
+      return Success(records);
+    }
+
+    return FailureResult(result.failureOrNull!);
+  }
+
+  @override
+  Future<Result<GymAppointmentPage>> fetchMyAppointmentsPage({
+    required AppSession session,
+    required GymAppointmentQuery query,
+  }) async {
+    return _gateway.fetchMyGymAppointmentsPage(session, query: query);
+  }
+
+  @override
+  Future<Result<GymVenueSearchPage>> searchVenues({
+    required AppSession session,
+    required GymVenueSearchQuery query,
+  }) async {
+    return _gateway.searchGymVenues(session, query: query);
+  }
+
+  @override
+  Future<Result<AppointmentDetail>> fetchAppointmentDetail({
+    required AppSession session,
+    required String wid,
+  }) async {
+    return _gateway.fetchGymAppointmentDetail(session, wid: wid);
+  }
+
+  @override
+  Future<Result<void>> cancelAppointment({
+    required AppSession session,
+    required String appointmentId,
+    String? reason,
+  }) async {
+    return _gateway.cancelGymAppointment(
+      session,
+      appointmentId: appointmentId,
+      reason: reason,
+    );
+  }
+
+  @override
+  Future<Result<VenueDetail>> fetchVenueDetail({
+    required AppSession session,
+    required String wid,
+  }) async {
+    final result = await _gateway.fetchGymRoomDetail(session, wid: wid);
+
+    if (result case Success<VenueDetail>(data: final detail)) {
+      return Success(detail);
+    }
+
+    return FailureResult(result.failureOrNull!);
+  }
+
+  @override
+  Future<Result<VenueReviewPage>> fetchVenueReviews({
+    required AppSession session,
+    required String bizWid,
+    int page = 1,
+    int pageSize = 10,
+  }) async {
+    final result = await _gateway.fetchGymRoomReviews(
+      session,
+      bizWid: bizWid,
+      page: page,
+      pageSize: pageSize,
+    );
+
+    if (result case Success<VenueReviewPage>(data: final reviewPage)) {
+      return Success(reviewPage);
+    }
+
+    return FailureResult(result.failureOrNull!);
+  }
+
+  @override
+  Future<Result<GymSearchModel>> fetchSearchModel({
+    required AppSession session,
+  }) async {
+    return _gateway.fetchGymSearchModel(session);
   }
 }

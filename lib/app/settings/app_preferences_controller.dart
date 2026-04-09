@@ -19,7 +19,8 @@ class AppPreferencesController extends Notifier<AppPreferences> {
     );
     if (prefs.pixelPet == null) {
       final random = Random();
-      final pet = PixelPetType.values[random.nextInt(PixelPetType.values.length)];
+      final pet =
+          PixelPetType.values[random.nextInt(PixelPetType.values.length)];
       Future.microtask(() => _update(prefs.copyWith(pixelPet: pet.name)));
       return prefs.copyWith(pixelPet: pet.name);
     }
@@ -58,14 +59,61 @@ class AppPreferencesController extends Notifier<AppPreferences> {
     final today = DateTime.now();
     final dateStr =
         '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-    await _update(state.copyWith(
-      scheduleWeekNumber: weekNumber,
-      scheduleWeekSetDate: dateStr,
-    ));
+    await _update(
+      state.copyWith(
+        scheduleWeekNumber: weekNumber,
+        scheduleWeekSetDate: dateStr,
+      ),
+    );
   }
 
   Future<void> reset() async {
     await _update(const AppPreferences());
+  }
+
+  Future<void> setGymPhoneNumber(String value) async {
+    await _update(state.copyWith(gymPhoneNumber: value));
+  }
+
+  Future<void> clearGymPhoneNumber() async {
+    await _update(state.copyWith(clearGymPhoneNumber: true));
+  }
+
+  Future<void> setGymPreferredSport({
+    required String id,
+    required String label,
+  }) async {
+    await _update(
+      state.copyWith(gymPreferredSportId: id, gymPreferredSportLabel: label),
+    );
+  }
+
+  Future<void> clearGymPreferredSport() async {
+    await _update(state.copyWith(clearGymPreferredSport: true));
+  }
+
+  Future<void> setGymPreferredVenueType({
+    required String id,
+    required String label,
+  }) async {
+    await _update(
+      state.copyWith(
+        gymPreferredVenueTypeId: id,
+        gymPreferredVenueTypeLabel: label,
+      ),
+    );
+  }
+
+  Future<void> clearGymPreferredVenueType() async {
+    await _update(state.copyWith(clearGymPreferredVenueType: true));
+  }
+
+  Future<void> setGymTimePreference(GymTimePreference value) async {
+    await _update(state.copyWith(gymTimePreference: value));
+  }
+
+  Future<void> clearGymTimePreference() async {
+    await _update(state.copyWith(clearGymTimePreference: true));
   }
 
   Future<void> _update(AppPreferences nextState) async {

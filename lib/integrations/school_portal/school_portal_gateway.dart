@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 
 import '../../core/error/failure.dart';
@@ -9,7 +10,13 @@ import '../../modules/auth/domain/entities/school_credential.dart';
 import '../../modules/electricity/domain/entities/electricity_dashboard.dart';
 import '../../modules/exams/domain/entities/exam_schedule_snapshot.dart';
 import '../../modules/grades/domain/entities/grades_snapshot.dart';
+import '../../modules/gym_booking/domain/entities/appointment_detail.dart';
+import '../../modules/gym_booking/domain/entities/gym_appointment_page.dart';
 import '../../modules/gym_booking/domain/entities/gym_booking_overview.dart';
+import '../../modules/gym_booking/domain/entities/gym_search_filter.dart';
+import '../../modules/gym_booking/domain/entities/gym_venue_search_page.dart';
+import '../../modules/gym_booking/domain/entities/venue_detail.dart';
+import '../../modules/gym_booking/domain/entities/venue_review.dart';
 import '../../modules/schedule/domain/entities/schedule_snapshot.dart';
 import '../../modules/services/domain/entities/service_card_data.dart';
 import '../../modules/services/domain/entities/service_launch_data.dart';
@@ -41,6 +48,49 @@ abstract class SchoolPortalGateway {
     AppSession session, {
     required BookingDraft draft,
   });
+  Future<Result<GymBookingEligibility>> checkGymBookingEligibility(
+    AppSession session, {
+    required BookingDraft draft,
+  });
+  Future<Result<List<BookingRecord>>> fetchMyGymAppointments(
+    AppSession session, {
+    int page = 1,
+    int pageSize = 20,
+  });
+  Future<Result<GymAppointmentPage>> fetchMyGymAppointmentsPage(
+    AppSession session, {
+    required GymAppointmentQuery query,
+  });
+
+  Future<Result<GymVenueSearchPage>> searchGymVenues(
+    AppSession session, {
+    required GymVenueSearchQuery query,
+  });
+
+  Future<Result<AppointmentDetail>> fetchGymAppointmentDetail(
+    AppSession session, {
+    required String wid,
+  });
+
+  Future<Result<void>> cancelGymAppointment(
+    AppSession session, {
+    required String appointmentId,
+    String? reason,
+  });
+
+  Future<Result<VenueDetail>> fetchGymRoomDetail(
+    AppSession session, {
+    required String wid,
+  });
+
+  Future<Result<VenueReviewPage>> fetchGymRoomReviews(
+    AppSession session, {
+    required String bizWid,
+    int page = 1,
+    int pageSize = 10,
+  });
+
+  Future<Result<GymSearchModel>> fetchGymSearchModel(AppSession session);
   Future<Result<List<ServiceCardGroup>>> fetchServiceCards(AppSession session);
   Future<Result<List<ServiceItem>>> fetchServiceCategoryItems(
     AppSession session, {
@@ -333,7 +383,770 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
     AppSession session, {
     required DateTime date,
   }) async {
-    return const FailureResult(BusinessFailure('体育馆预约将在后续接入。'));
+    _logger.info('[Gateway] 开始加载场馆预约 userId=${session.userId} date=$date');
+    final validation = await validateSession(session);
+    if (validation.isFailure) {
+      _logger.warn('[Gateway] 场馆预约加载前 session 校验失败');
+      return FailureResult(validation.failureOrNull!);
+    }
+
+    final beginDate = _formatDate(DateTime.now());
+    final advanceDays = 7;
+    final endDate = _formatDate(
+      DateTime.now().add(Duration(days: advanceDays)),
+    );
+
+    final roomResult = await _portalApi.fetchGymData(
+      session,
+      path: '/modules/application/getOpeningRoom.do',
+      formFields: {
+        'BEGIN': beginDate,
+        'END': endDate,
+        'pageSize': '100',
+        'pageNumber': '1',
+      },
+    );
+    if (roomResult case FailureResult<dynamic>(failure: final failure)) {
+      return FailureResult(failure);
+    }
+
+    final parsed = _parseGymRoomData(roomResult.dataOrNull, targetDate: date);
+    if (parsed == null) {
+      return const FailureResult(ParsingFailure('场馆数据解析失败。'));
+    }
+
+    final recordsResult = await _portalApi.fetchGymData(
+      session,
+      path: '/modules/myApplication/getMyAppointmentListData.do',
+      formFields: {'pageSize': '50', 'pageNumber': '1'},
+    );
+    final records = _parseGymAppointmentRecords(recordsResult.dataOrNull);
+
+    _logger.info(
+      '[Gateway] 场馆预约加载完成 venueCount=${parsed.venues.length} '
+      'slotCount=${parsed.slotsByVenue.values.fold<int>(0, (s, l) => s + l.length)} '
+      'recordCount=${records.length}',
+    );
+
+    return Success(parsed.copyWith(records: records));
+  }
+
+  @override
+  Future<Result<GymVenueSearchPage>> searchGymVenues(
+    AppSession session, {
+    required GymVenueSearchQuery query,
+  }) async {
+    _logger.info(
+      '[Gateway] 搜索场馆 userId=${session.userId} '
+      'date=${query.date} page=${query.pageNumber} keyword=${query.keyword}',
+    );
+    final validation = await validateSession(session);
+    if (validation.isFailure) {
+      return FailureResult(validation.failureOrNull!);
+    }
+
+    final formFields = <String, dynamic>{
+      'BEGIN': _formatDate(query.date),
+      'END': _formatDate(query.date),
+      'pageSize': '${query.pageSize}',
+      'pageNumber': '${query.pageNumber}',
+    };
+    if (query.venueId != null && query.venueId!.isNotEmpty) {
+      formFields['WID'] = query.venueId!;
+    }
+
+    final querySetting = _buildVenueQuerySetting(query);
+    if (querySetting != null) {
+      formFields['querySetting'] = jsonEncode(querySetting);
+    }
+
+    final result = await _portalApi.fetchGymData(
+      session,
+      path: '/modules/application/getOpeningRoom.do',
+      formFields: formFields,
+    );
+    if (result case FailureResult<dynamic>(failure: final failure)) {
+      return FailureResult(failure);
+    }
+
+    final page = _parseGymVenueSearchPage(result.dataOrNull, query: query);
+    if (page == null) {
+      return const FailureResult(ParsingFailure('场馆搜索结果解析失败。'));
+    }
+
+    _logger.info(
+      '[Gateway] 场馆搜索完成 page=${page.query.pageNumber} '
+      'count=${page.venues.length} total=${page.totalSize}',
+    );
+    return Success(page);
+  }
+
+  @override
+  Future<Result<BookingRecord>> submitGymBooking(
+    AppSession session, {
+    required BookingDraft draft,
+  }) async {
+    _logger.info(
+      '[Gateway] 提交场馆预约 userId=${session.userId} '
+      'venue=${draft.venue.name} date=${draft.date} '
+      'slot=${draft.slot.timeLabel}',
+    );
+    final validation = await validateSession(session);
+    if (validation.isFailure) {
+      return FailureResult(validation.failureOrNull!);
+    }
+
+    final formData = _buildGymApplyFormData(draft);
+    final eligibilityResult = await checkGymBookingEligibility(
+      session,
+      draft: draft,
+    );
+    if (eligibilityResult case FailureResult<GymBookingEligibility>(
+      failure: final failure,
+    )) {
+      return FailureResult(failure);
+    }
+    if (eligibilityResult.dataOrNull?.canApply != true) {
+      return FailureResult(
+        BusinessFailure(eligibilityResult.dataOrNull?.message ?? '预约校验未通过。'),
+      );
+    }
+
+    final startFlowResult = await _portalApi.fetchGymData(
+      session,
+      path: '/sys/emapflow/tasks/startFlow.do',
+      formFields: {
+        'formData': jsonEncode(formData),
+        'id': 'start',
+        'sendMessage': 'true',
+        'commandType': 'start',
+        'execute': 'do_start',
+        'name': '提交',
+        'commandEvent':
+            'com.wisedu.emap.lwWiseduCgyy.service.Impl.ApplyCheckFlowService',
+        'url': '/sys/emapflow/tasks/startFlow.do',
+        'buttonType': 'success',
+        'taskId': '',
+        'defKey': 'lwWiseduCgyy.MainFlow',
+      },
+    );
+    if (startFlowResult case FailureResult<dynamic>(failure: final failure)) {
+      return FailureResult(failure);
+    }
+
+    final submitData = startFlowResult.dataOrNull;
+    if (submitData is Map<String, dynamic>) {
+      final succeed = submitData['succeed'];
+      if (succeed == false || succeed == 'false') {
+        final msg =
+            _pickString(submitData, const ['msg', 'message']) ?? '预约提交失败。';
+        return FailureResult(BusinessFailure(msg));
+      }
+    }
+
+    _logger.info('[Gateway] 场馆预约提交成功 venue=${draft.venue.name}');
+
+    final refreshedRecords = await fetchMyGymAppointments(
+      session,
+      page: 1,
+      pageSize: 20,
+    );
+    if (refreshedRecords case Success<List<BookingRecord>>(
+      data: final records,
+    )) {
+      for (final record in records) {
+        if (record.venueName == draft.venue.name &&
+            record.slotLabel == draft.slot.timeLabel &&
+            _normalizeDate(record.date) == _normalizeDate(draft.date)) {
+          return Success(record);
+        }
+      }
+    }
+
+    return Success(
+      BookingRecord(
+        id: draft.venue.id,
+        venueName: draft.venue.name,
+        slotLabel: draft.slot.timeLabel,
+        date: draft.date,
+        status: '未使用',
+        statusCode: '001',
+        canCancel: true,
+      ),
+    );
+  }
+
+  @override
+  Future<Result<GymBookingEligibility>> checkGymBookingEligibility(
+    AppSession session, {
+    required BookingDraft draft,
+  }) async {
+    final checkResult = await _portalApi.fetchGymData(
+      session,
+      path: '/modules/application/checkCanApply.do',
+      formFields: _buildGymApplyFormData(draft),
+    );
+    if (checkResult case FailureResult<dynamic>(failure: final failure)) {
+      return FailureResult(failure);
+    }
+
+    return _parseGymEligibility(checkResult.dataOrNull);
+  }
+
+  @override
+  Future<Result<List<BookingRecord>>> fetchMyGymAppointments(
+    AppSession session, {
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    final pageResult = await fetchMyGymAppointmentsPage(
+      session,
+      query: GymAppointmentQuery(pageNumber: page, pageSize: pageSize),
+    );
+    if (pageResult case Success<GymAppointmentPage>(data: final resultPage)) {
+      return Success(resultPage.records);
+    }
+    return FailureResult(pageResult.failureOrNull!);
+  }
+
+  @override
+  Future<Result<GymAppointmentPage>> fetchMyGymAppointmentsPage(
+    AppSession session, {
+    required GymAppointmentQuery query,
+  }) async {
+    _logger.info(
+      '[Gateway] 加载我的场馆预约 userId=${session.userId} page=${query.pageNumber}',
+    );
+    final validation = await validateSession(session);
+    if (validation.isFailure) {
+      return FailureResult(validation.failureOrNull!);
+    }
+
+    final formFields = <String, dynamic>{
+      'pageSize': '${query.pageSize}',
+      'pageNumber': '${query.pageNumber}',
+    };
+    final querySetting = _buildAppointmentQuerySetting(query);
+    if (querySetting != null) {
+      formFields['querySetting'] = jsonEncode(querySetting);
+    }
+
+    final result = await _portalApi.fetchGymData(
+      session,
+      path: '/modules/myApplication/getMyAppointmentListData.do',
+      formFields: formFields,
+    );
+    if (result case FailureResult<dynamic>(failure: final failure)) {
+      return FailureResult(failure);
+    }
+
+    final records = _parseGymAppointmentRecords(result.dataOrNull);
+    final paging = _extractPagingInfo(
+      result.dataOrNull,
+      dataKey: 'getMyAppointmentListData',
+    );
+    final pageData = GymAppointmentPage(
+      query: query,
+      records: records,
+      totalSize: paging.totalSize,
+      fetchedAt: DateTime.now(),
+      origin: DataOrigin.remote,
+    );
+    _logger.info(
+      '[Gateway] 我的场馆预约加载完成 count=${records.length} total=${paging.totalSize}',
+    );
+    return Success(pageData);
+  }
+
+  @override
+  Future<Result<AppointmentDetail>> fetchGymAppointmentDetail(
+    AppSession session, {
+    required String wid,
+  }) async {
+    _logger.info('[Gateway] 加载预约详情 userId=${session.userId} wid=$wid');
+    final validation = await validateSession(session);
+    if (validation.isFailure) {
+      return FailureResult(validation.failureOrNull!);
+    }
+
+    final result = await _portalApi.fetchGymData(
+      session,
+      path: '/modules/myApplication/getMyAppointmentData.do',
+      formFields: {'WID': wid},
+    );
+    if (result case FailureResult<dynamic>(failure: final failure)) {
+      return FailureResult(failure);
+    }
+
+    final rows = _extractGymRows(
+      result.dataOrNull,
+      dataKey: 'getMyAppointmentData',
+    );
+    if (rows.isEmpty) {
+      return const FailureResult(ParsingFailure('未找到预约详情。'));
+    }
+
+    final row = rows.first;
+    var detail = _mapAppointmentDetail(row);
+    if (detail == null) {
+      return const FailureResult(ParsingFailure('预约详情解析失败。'));
+    }
+
+    if (detail.status == '未知' || detail.statusCode == null) {
+      final recordsResult = await fetchMyGymAppointments(
+        session,
+        page: 1,
+        pageSize: 50,
+      );
+      if (recordsResult case Success<List<BookingRecord>>(
+        data: final records,
+      )) {
+        final matched = records.where((item) => item.id == wid).toList();
+        if (matched.isNotEmpty) {
+          final record = matched.first;
+          detail = AppointmentDetail(
+            id: detail.id,
+            venueName: detail.venueName,
+            address: detail.address,
+            slotLabel: detail.slotLabel,
+            date: detail.date,
+            status: record.status,
+            statusCode: record.statusCode,
+            attendeeName: detail.attendeeName,
+            phone: detail.phone,
+            department: detail.department,
+            venueType: detail.venueType,
+            sportName: detail.sportName,
+            bookingType: detail.bookingType,
+            attendeeCount: detail.attendeeCount,
+            venueCode: detail.venueCode,
+            businessWid: detail.businessWid,
+            cancelReasonCode: detail.cancelReasonCode,
+            cancelTime: detail.cancelTime,
+            rating: detail.rating,
+            reviewContent: detail.reviewContent,
+            checkInTime: detail.checkInTime,
+            checkOutTime: detail.checkOutTime,
+            durationMinutes: detail.durationMinutes,
+            canCancel: record.canCancel,
+          );
+        }
+      }
+    }
+
+    _logger.info('[Gateway] 预约详情加载完成 wid=$wid');
+    return Success(detail);
+  }
+
+  @override
+  Future<Result<void>> cancelGymAppointment(
+    AppSession session, {
+    required String appointmentId,
+    String? reason,
+  }) async {
+    _logger.info('[Gateway] 取消预约 wid=$appointmentId');
+    final validation = await validateSession(session);
+    if (validation.isFailure) {
+      return FailureResult(validation.failureOrNull!);
+    }
+
+    final now = DateTime.now();
+    final qxsj =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+
+    final result = await _portalApi.fetchGymData(
+      session,
+      path: '/modules/myApplication/T_WISEDU_CGYY_YY_SAVE.do',
+      formFields: {
+        'WID': appointmentId,
+        'QXYY': (reason == null || reason.isEmpty) ? '0' : reason,
+        'QXSJ': qxsj,
+        'SYZT': '003',
+        'PAY_STATUS': 'CG_QX',
+      },
+    );
+
+    if (result case FailureResult<dynamic>(failure: final failure)) {
+      return FailureResult(failure);
+    }
+
+    final data = result.dataOrNull;
+    if (data is Map<String, dynamic>) {
+      final code = _pickString(data, const ['code']);
+      if (code != null && code != '0') {
+        final msg = _pickString(data, const ['msg', 'message']) ?? '取消预约失败。';
+        return FailureResult(BusinessFailure(msg));
+      }
+    }
+
+    _logger.info('[Gateway] 取消预约成功 wid=$appointmentId');
+    return const Success(null);
+  }
+
+  @override
+  Future<Result<VenueDetail>> fetchGymRoomDetail(
+    AppSession session, {
+    required String wid,
+  }) async {
+    _logger.info('[Gateway] 加载场地详情 wid=$wid');
+    final validation = await validateSession(session);
+    if (validation.isFailure) {
+      return FailureResult(validation.failureOrNull!);
+    }
+
+    final result = await _portalApi.fetchGymData(
+      session,
+      path: '/modules/application/getRoomDetail.do',
+      formFields: {'WID': wid},
+    );
+    if (result case FailureResult<dynamic>(failure: final failure)) {
+      return FailureResult(failure);
+    }
+
+    final rows = _extractGymRows(result.dataOrNull, dataKey: 'getRoomDetail');
+    if (rows.isEmpty) {
+      return const FailureResult(ParsingFailure('未找到场地详情。'));
+    }
+
+    final row = rows.first;
+    final name =
+        _pickString(row, const ['HYSMC', 'NAME', 'BIZ_WID_DISPLAY']) ?? '';
+    final detail = VenueDetail(
+      id: wid,
+      name: name,
+      address: _pickString(row, const ['XXDZ', 'address']),
+      venueType: _pickString(row, const ['HYSLX_DISPLAY', 'HYSLX']),
+      department: _pickString(row, const ['GLBM_DISPLAY', 'GLBMMC']),
+      capacity: _pickInt(row, const ['RNRS', 'capacity']) ?? 0,
+      maxAdvanceDays: _pickInt(row, const ['TQYYTS']),
+      openStatus: _pickString(row, const ['KFZT_DISPLAY', 'KFZT']),
+      bookable: _pickString(row, const ['YYSH_DISPLAY', 'YYSH']),
+    );
+
+    _logger.info('[Gateway] 场地详情加载完成 name=$name');
+    return Success(detail);
+  }
+
+  @override
+  Future<Result<VenueReviewPage>> fetchGymRoomReviews(
+    AppSession session, {
+    required String bizWid,
+    int page = 1,
+    int pageSize = 10,
+  }) async {
+    _logger.info('[Gateway] 加载场地评论 bizWid=$bizWid page=$page');
+    final validation = await validateSession(session);
+    if (validation.isFailure) {
+      return FailureResult(validation.failureOrNull!);
+    }
+
+    final result = await _portalApi.fetchGymData(
+      session,
+      path: '/modules/application/getRecentRoomRate.do',
+      formFields: {
+        'BIZ_WID': bizWid,
+        'pageSize': '$pageSize',
+        'pageNumber': '$page',
+      },
+    );
+    if (result case FailureResult<dynamic>(failure: final failure)) {
+      return FailureResult(failure);
+    }
+
+    final rows = _extractGymRows(
+      result.dataOrNull,
+      dataKey: 'getRecentRoomRate',
+    );
+    final reviews = rows.map(_mapVenueReview).whereType<VenueReview>().toList();
+
+    final totalCount = _extractTotalCount(
+      result.dataOrNull,
+      'getRecentRoomRate',
+    );
+
+    _logger.info(
+      '[Gateway] 场地评论加载完成 count=${reviews.length} total=$totalCount',
+    );
+    return Success(
+      VenueReviewPage(
+        reviews: reviews,
+        totalCount: totalCount,
+        pageNumber: page,
+        pageSize: pageSize,
+      ),
+    );
+  }
+
+  VenueReview? _mapVenueReview(Map<String, dynamic> map) {
+    final id = _pickString(map, const ['WID', 'wid']) ?? '';
+    final userName =
+        _pickString(map, const ['XM', 'userName', 'CZRXM']) ?? '匿名';
+    final ratingRaw = _pickDouble(map, const ['PF', 'rating', 'SCORE']);
+    if (ratingRaw == null) return null;
+
+    final czrq = _pickString(map, const ['CZRQ', 'createdAt']);
+    final createdAt = czrq != null ? DateTime.tryParse(czrq) : null;
+
+    return VenueReview(
+      id: id,
+      userName: userName,
+      rating: ratingRaw,
+      content: _pickString(map, const ['PJNR', 'content', 'remark']),
+      createdAt: createdAt,
+    );
+  }
+
+  int _extractTotalCount(dynamic raw, String dataKey) {
+    if (raw is! Map<String, dynamic>) return 0;
+    final datas = raw['datas'];
+    if (datas is! Map<String, dynamic>) return 0;
+    final sub = datas[dataKey];
+    if (sub is! Map<String, dynamic>) return 0;
+    return _pickInt(sub, const [
+          'totalSize',
+          'total',
+          'totalCount',
+          'totalResult',
+        ]) ??
+        0;
+  }
+
+  @override
+  Future<Result<GymSearchModel>> fetchGymSearchModel(AppSession session) async {
+    _logger.info('[Gateway] 加载场馆搜索模型');
+    final validation = await validateSession(session);
+    if (validation.isFailure) {
+      return FailureResult(validation.failureOrNull!);
+    }
+
+    final result = await _portalApi.fetchGymData(
+      session,
+      path: '/modules/application/getRoomOrderSearchModel.do',
+      formFields: {'*searchMeta': '1'},
+    );
+    if (result case FailureResult<dynamic>(failure: final failure)) {
+      return FailureResult(failure);
+    }
+
+    final model = await _parseSearchModel(session, result.dataOrNull);
+    _logger.info(
+      '[Gateway] 搜索模型加载完成 controls=${model.controls.length} '
+      'venueTypes=${model.venueTypes.length} sports=${model.sports.length}',
+    );
+    return Success(model);
+  }
+
+  Future<GymSearchModel> _parseSearchModel(
+    AppSession session,
+    dynamic raw,
+  ) async {
+    final controls = <GymSearchControl>[];
+    final venueTypes = <GymFilterOption>[];
+    final sports = <GymFilterOption>[];
+
+    final rawControls = _extractSearchControls(raw);
+    if (rawControls.isEmpty) {
+      return GymSearchModel(
+        controls: controls,
+        venueTypes: venueTypes,
+        sports: sports,
+      );
+    }
+
+    for (final control in rawControls) {
+      if (control is! Map) {
+        continue;
+      }
+      final controlMap = Map<String, dynamic>.from(
+        control.cast<dynamic, dynamic>(),
+      );
+      final name = _pickString(controlMap, const ['name']);
+      if (name == null || name.isEmpty) {
+        continue;
+      }
+      final caption = _pickString(controlMap, const ['caption']) ?? name;
+      final defaultBuilder =
+          _pickString(controlMap, const ['defaultBuilder', 'builder']) ??
+          'm_value_equal';
+      final builderList = _pickString(controlMap, const ['builderList']);
+      final url = _pickString(controlMap, const ['url']);
+
+      var options = _parseInlineFilterOptions(controlMap);
+      if (options.isEmpty && url != null && url.isNotEmpty) {
+        final remotePost = await _portalApi.fetchGymCodeData(
+          session,
+          codeUrl: url,
+          method: 'POST',
+        );
+        if (remotePost case Success<dynamic>(data: final data)) {
+          options = _parseRemoteFilterOptions(data);
+        }
+        if (options.isEmpty) {
+          final remoteGet = await _portalApi.fetchGymCodeData(
+            session,
+            codeUrl: url,
+            method: 'GET',
+          );
+          if (remoteGet case Success<dynamic>(data: final data)) {
+            options = _parseRemoteFilterOptions(data);
+          }
+        }
+      }
+
+      final resolvedOptions = _deduplicateFilterOptions(
+        options
+            .map(
+              (option) => option.copyWith(
+                controlName: name,
+                caption: caption,
+                builder: defaultBuilder,
+                builderList: builderList,
+                url: url,
+              ),
+            )
+            .toList(),
+      );
+      controls.add(
+        GymSearchControl(
+          name: name,
+          caption: caption,
+          defaultBuilder: defaultBuilder,
+          builderList: builderList,
+          url: url,
+          options: resolvedOptions,
+        ),
+      );
+
+      if (name.contains('HYSLX') || name.contains('venueType')) {
+        venueTypes.addAll(resolvedOptions);
+      } else if (name.contains('GLBM') || name.contains('sport')) {
+        sports.addAll(resolvedOptions);
+      }
+    }
+
+    return GymSearchModel(
+      controls: controls,
+      venueTypes: _deduplicateFilterOptions(venueTypes),
+      sports: _deduplicateFilterOptions(sports),
+    );
+  }
+
+  List<dynamic> _extractSearchControls(dynamic raw) {
+    if (raw is! Map<String, dynamic>) {
+      return const [];
+    }
+
+    final candidates = <dynamic>[
+      raw,
+      raw['searchMeta'],
+      raw['getRoomOrderSearchModel'],
+    ];
+
+    final datas = raw['datas'];
+    if (datas is Map<String, dynamic>) {
+      candidates.addAll([
+        datas,
+        datas['searchMeta'],
+        datas['getRoomOrderSearchModel'],
+      ]);
+    }
+
+    for (final candidate in candidates) {
+      final controls = _readSearchControls(candidate);
+      if (controls.isNotEmpty) {
+        return controls;
+      }
+    }
+
+    return const [];
+  }
+
+  List<dynamic> _readSearchControls(dynamic candidate) {
+    if (candidate is! Map) {
+      return const [];
+    }
+    final map = Map<String, dynamic>.from(candidate.cast<dynamic, dynamic>());
+    final directControls = map['controls'];
+    if (directControls is List) {
+      return directControls;
+    }
+
+    final searchMeta = map['searchMeta'];
+    if (searchMeta is Map) {
+      final nested = _readSearchControls(searchMeta);
+      if (nested.isNotEmpty) {
+        return nested;
+      }
+    }
+
+    return const [];
+  }
+
+  List<GymFilterOption> _parseInlineFilterOptions(
+    Map<String, dynamic> control,
+  ) {
+    final options = <GymFilterOption>[];
+    final optionValues = control['optionValues'];
+    if (optionValues is! List) {
+      return options;
+    }
+
+    for (final opt in optionValues) {
+      if (opt is! Map) {
+        continue;
+      }
+      final map = Map<String, dynamic>.from(opt.cast<dynamic, dynamic>());
+      final id = _pickString(map, const ['id', 'value']) ?? '';
+      final label = _pickString(map, const ['label', 'text', 'name']) ?? id;
+      if (id.isNotEmpty) {
+        options.add(GymFilterOption(id: id, label: label));
+      }
+    }
+
+    return options;
+  }
+
+  List<GymFilterOption> _parseRemoteFilterOptions(dynamic raw) {
+    if (raw is! Map<String, dynamic>) {
+      return const [];
+    }
+    final datas = raw['datas'];
+    if (datas is! Map<String, dynamic>) {
+      return const [];
+    }
+    final code = datas['code'];
+    if (code is! Map<String, dynamic>) {
+      return const [];
+    }
+    final rows = code['rows'];
+    if (rows is! List) {
+      return const [];
+    }
+
+    final options = <GymFilterOption>[];
+    for (final row in rows) {
+      if (row is! Map) {
+        continue;
+      }
+      final map = Map<String, dynamic>.from(row.cast<dynamic, dynamic>());
+      final id = _pickString(map, const ['id', 'value']) ?? '';
+      final label = _pickString(map, const ['name', 'label', 'text']) ?? id;
+      if (id.isNotEmpty) {
+        options.add(GymFilterOption(id: id, label: label));
+      }
+    }
+    return options;
+  }
+
+  List<GymFilterOption> _deduplicateFilterOptions(
+    List<GymFilterOption> options,
+  ) {
+    final deduped = <String, GymFilterOption>{};
+    for (final option in options) {
+      deduped[option.id] = option;
+    }
+    return deduped.values.toList();
   }
 
   @override
@@ -344,14 +1157,6 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
   @override
   Future<Result<AppSession>> refreshSession(SchoolCredential credential) {
     return _loginOrchestrator.login(credential);
-  }
-
-  @override
-  Future<Result<BookingRecord>> submitGymBooking(
-    AppSession session, {
-    required BookingDraft draft,
-  }) async {
-    return const FailureResult(BusinessFailure('体育馆预约将在后续接入。'));
   }
 
   @override
@@ -469,6 +1274,526 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
     }
 
     return _portalApi.prepareServiceLaunch(session, item: item);
+  }
+
+  GymBookingOverview? _parseGymRoomData(
+    dynamic raw, {
+    required DateTime targetDate,
+  }) {
+    final page = _parseGymVenueSearchPage(
+      raw,
+      query: GymVenueSearchQuery(
+        date: targetDate,
+        pageNumber: 1,
+        pageSize: 100,
+      ),
+    );
+    if (page == null) {
+      return null;
+    }
+
+    final venues = page.venues;
+    final slotsByVenue = page.slotsByVenue;
+    final today = _normalizeDate(DateTime.now());
+    const advanceWindowDays = 7;
+
+    final targetNorm = _normalizeDate(targetDate);
+    final hasTargetSlots = slotsByVenue.values.any(
+      (slots) => slots.any((s) => _normalizeDate(s.date) == targetNorm),
+    );
+
+    if (!hasTargetSlots && targetNorm.isBefore(today)) {
+      _logger.warn('[Gateway] 所选日期在可预约范围之前');
+    }
+
+    return GymBookingOverview(
+      date: targetDate,
+      venues: venues,
+      slotsByVenue: slotsByVenue,
+      rule: BookingRule(
+        summary: '支持预约未来 $advanceWindowDays 天的场地',
+        advanceWindowDays: advanceWindowDays,
+        supportsSameDay: true,
+      ),
+      records: const [],
+      fetchedAt: DateTime.now(),
+      origin: DataOrigin.remote,
+    );
+  }
+
+  GymVenueSearchPage? _parseGymVenueSearchPage(
+    dynamic raw, {
+    required GymVenueSearchQuery query,
+  }) {
+    final rows = _extractGymRows(raw, dataKey: 'getOpeningRoom');
+    final paging = _extractPagingInfo(raw, dataKey: 'getOpeningRoom');
+
+    final venues = <Venue>[];
+    final slotsByVenue = <String, List<BookableSlot>>{};
+    for (final row in rows) {
+      final venue = _mapVenueFromRoomRow(row);
+      if (venue == null) {
+        continue;
+      }
+
+      final slots = _extractSlotsFromRoomRow(
+        row,
+        venueId: venue.id,
+        targetDate: query.date,
+      );
+      venues.add(venue);
+      slotsByVenue[venue.id] = slots;
+    }
+
+    return GymVenueSearchPage(
+      query: query,
+      venues: venues,
+      slotsByVenue: slotsByVenue,
+      totalSize: paging.totalSize,
+      fetchedAt: DateTime.now(),
+      origin: DataOrigin.remote,
+    );
+  }
+
+  List<BookingRecord> _parseGymAppointmentRecords(dynamic raw) {
+    // Response: { "code": "0", "datas": { "getMyAppointmentListData": { "rows": [...] } } }
+    final rows = _extractGymRows(raw, dataKey: 'getMyAppointmentListData');
+    return rows
+        .map(_mapGymAppointmentRecord)
+        .whereType<BookingRecord>()
+        .toList();
+  }
+
+  List<Map<String, dynamic>> _extractGymRows(
+    dynamic raw, {
+    required String dataKey,
+  }) {
+    if (raw is! Map<String, dynamic>) return const [];
+
+    // Try "datas.{dataKey}.rows" structure first
+    final datas = raw['datas'];
+    if (datas is Map<String, dynamic>) {
+      final sub = datas[dataKey];
+      if (sub is Map<String, dynamic>) {
+        final rowsRaw = sub['rows'];
+        if (rowsRaw is List) {
+          return rowsRaw
+              .whereType<Map>()
+              .map((m) => Map<String, dynamic>.from(m.cast<dynamic, dynamic>()))
+              .toList();
+        }
+      }
+    }
+
+    // Fallback: "data.rows" or "data"
+    final data = raw['data'];
+    if (data is Map<String, dynamic>) {
+      final rowsRaw = data['rows'];
+      if (rowsRaw is List) {
+        return rowsRaw
+            .whereType<Map>()
+            .map((m) => Map<String, dynamic>.from(m.cast<dynamic, dynamic>()))
+            .toList();
+      }
+      return [data];
+    }
+
+    return const [];
+  }
+
+  ({int pageNumber, int pageSize, int totalSize}) _extractPagingInfo(
+    dynamic raw, {
+    required String dataKey,
+  }) {
+    if (raw is! Map<String, dynamic>) {
+      return (pageNumber: 1, pageSize: 0, totalSize: 0);
+    }
+
+    final datas = raw['datas'];
+    if (datas is! Map<String, dynamic>) {
+      return (pageNumber: 1, pageSize: 0, totalSize: 0);
+    }
+    final sub = datas[dataKey];
+    if (sub is! Map<String, dynamic>) {
+      return (pageNumber: 1, pageSize: 0, totalSize: 0);
+    }
+
+    return (
+      pageNumber: _pickInt(sub, const ['pageNumber']) ?? 1,
+      pageSize: _pickInt(sub, const ['pageSize']) ?? 0,
+      totalSize: _pickInt(sub, const ['totalSize', 'total', 'totalCount']) ?? 0,
+    );
+  }
+
+  Venue? _mapVenueFromRoomRow(Map<String, dynamic> row) {
+    final wid = _pickString(row, const ['WID', 'wid']) ?? '';
+    final bizWid = _pickString(row, const ['BIZ_WID', 'bizWid']) ?? '';
+    final name = _pickString(row, const [
+      'HYSMC',
+      'BIZ_WID_DISPLAY',
+      'WID_DISPLAY',
+      'NAME',
+      'name',
+    ]);
+    if (name == null) {
+      return null;
+    }
+
+    final venueType = _pickString(row, const ['HYSLX_DISPLAY', 'venueType']);
+    final venueTypeId = _pickString(row, const ['HYSLX', 'venueTypeId']);
+    final sportName = _pickString(row, const ['GLBM_DISPLAY', 'GLBMMC']);
+    final sportId = _pickString(row, const ['GLBM', 'departmentId']);
+    final address = _pickString(row, const ['XXDZ', 'address']);
+    final openStatus = _pickString(row, const ['KFZT_DISPLAY', 'KFZT']);
+    final approvalMode = _pickString(row, const ['YYSH_DISPLAY', 'YYSH']);
+    final venueCode = _pickString(row, const ['HYSBH', 'code']);
+    final capacity = _pickInt(row, const ['RNRS', 'capacity']) ?? 0;
+
+    return Venue(
+      id: wid.isNotEmpty ? wid : bizWid,
+      name: name,
+      location: address ?? sportName ?? venueType ?? '',
+      bizWid: bizWid.isNotEmpty ? bizWid : wid,
+      venueType: venueType,
+      venueTypeId: venueTypeId,
+      sportId: sportId,
+      sportName: sportName,
+      department: sportName,
+      departmentId: sportId,
+      venueCode: venueCode,
+      address: address,
+      openStatus: openStatus,
+      approvalMode: approvalMode,
+      capacity: capacity,
+    );
+  }
+
+  List<BookableSlot> _extractSlotsFromRoomRow(
+    Map<String, dynamic> row, {
+    required String venueId,
+    DateTime? targetDate,
+  }) {
+    final slots = <BookableSlot>[];
+    final normalizedTarget = targetDate == null
+        ? null
+        : _normalizeDate(targetDate);
+    final fallbackCapacity = _pickInt(row, const ['RNRS', 'capacity']) ?? 1;
+
+    for (var dayNum = 1; dayNum <= 7; dayNum++) {
+      final dayData = row['day$dayNum'];
+      if (dayData is! Map) {
+        continue;
+      }
+
+      final dayMap = Map<String, dynamic>.from(
+        dayData.cast<dynamic, dynamic>(),
+      );
+      final dateStr = _pickString(dayMap, const ['date']);
+      if (dateStr == null) {
+        continue;
+      }
+      final parsedDate = DateTime.tryParse(dateStr);
+      if (parsedDate == null) {
+        continue;
+      }
+
+      final slotDate = _normalizeDate(parsedDate);
+      if (normalizedTarget != null && slotDate != normalizedTarget) {
+        continue;
+      }
+
+      final timesText = _pickString(dayMap, const ['times']) ?? '';
+      if (timesText.isEmpty) {
+        continue;
+      }
+
+      for (final timeSegment in timesText.split(',')) {
+        final trimmed = timeSegment.trim();
+        if (trimmed.isEmpty) {
+          continue;
+        }
+        final parts = trimmed.split('-');
+        if (parts.length != 2) {
+          continue;
+        }
+
+        slots.add(
+          BookableSlot(
+            id: '${venueId}_${slotDate.toIso8601String()}_$trimmed',
+            startTime: parts[0].trim(),
+            endTime: parts[1].trim(),
+            capacity: fallbackCapacity,
+            remaining: 1,
+            date: slotDate,
+            weekday: slotDate.weekday,
+          ),
+        );
+      }
+    }
+
+    return slots;
+  }
+
+  Map<String, dynamic> _buildGymApplyFormData(BookingDraft draft) {
+    final yyrq = _formatDate(draft.date);
+    final sysj = draft.slot.timeLabel;
+    final bizWid = draft.bizWid ?? draft.venue.bizWid;
+    final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+    final raw = '${draft.userAccount}$yyrq$sysj${bizWid}_WISEDU_$timestamp';
+    final encoded = Uri.encodeComponent(raw);
+    final verification = base64Encode(utf8.encode(encoded));
+
+    return {
+      'YYRXM': draft.attendeeName,
+      'YYLX_DISPLAY': '个人预约',
+      'YYLX': '001',
+      'YYRQ': yyrq,
+      'SYSJ': sysj,
+      'SYRS': '1',
+      'LXDH': draft.phone ?? '',
+      'HYSLX_DISPLAY': draft.venue.venueType ?? '',
+      'HYSLX': draft.venue.venueTypeId ?? '',
+      'GLBM_DISPLAY': draft.venue.sportName ?? draft.venue.department ?? '',
+      'GLBM': draft.venue.sportId ?? draft.venue.departmentId ?? '',
+      'HYSMC': draft.venue.name,
+      'HYZT': '',
+      'HYMS': '',
+      'BZ': '',
+      'FJ': '',
+      'WID': draft.venue.id,
+      'XGH': draft.userAccount,
+      'BIZ_WID': bizWid,
+      'SYZT': '001',
+      'VERIFICATION': verification,
+      'BCSQRS': 1,
+      'USERID': draft.userAccount,
+    };
+  }
+
+  Result<GymBookingEligibility> _parseGymEligibility(dynamic raw) {
+    if (raw is! Map<String, dynamic>) {
+      return const FailureResult(ParsingFailure('预约校验响应结构异常。'));
+    }
+
+    final code = _pickString(raw, const ['code']);
+    if (code != null && code != '0') {
+      final msg = _pickString(raw, const ['msg', 'message']) ?? '预约校验未通过。';
+      return FailureResult(BusinessFailure(msg));
+    }
+
+    final data = raw['data'];
+    if (data is! Map<String, dynamic>) {
+      return const Success(GymBookingEligibility(canApply: true));
+    }
+
+    final canApply = _pickString(data, const ['canApply']);
+    if (canApply == 'false' || canApply == '0') {
+      final message =
+          _pickString(data, const ['msg']) ??
+          _pickString(raw, const ['msg', 'message']) ??
+          '预约校验未通过。';
+      return Success(GymBookingEligibility(canApply: false, message: message));
+    }
+
+    return const Success(GymBookingEligibility(canApply: true));
+  }
+
+  List<dynamic>? _buildVenueQuerySetting(GymVenueSearchQuery query) {
+    final groups = <dynamic>[];
+    final keyword = query.keyword.trim();
+
+    if (keyword.isNotEmpty) {
+      groups.add([
+        {
+          'caption': '场地名称',
+          'name': 'HYSMC',
+          'value': keyword,
+          'builder': 'include',
+          'linkOpt': 'OR',
+        },
+      ]);
+    }
+
+    if (query.venueTypeId != null && query.venueTypeId!.isNotEmpty) {
+      final entry = <String, dynamic>{
+        'name': 'HYSLX',
+        'caption': '场馆类型',
+        'builder': query.venueTypeBuilder ?? 'm_value_equal',
+        'linkOpt': 'AND',
+        'builderList': query.venueTypeBuilderList ?? 'cbl_m_List',
+        'value': query.venueTypeId,
+      };
+      if (query.venueTypeLabel != null && query.venueTypeLabel!.isNotEmpty) {
+        entry['value_display'] = query.venueTypeLabel;
+      }
+      groups.add(entry);
+    }
+
+    if (query.sportId != null && query.sportId!.isNotEmpty) {
+      final entry = <String, dynamic>{
+        'name': 'GLBM',
+        'caption': '体育项目',
+        'builder': query.sportBuilder ?? 'm_value_equal',
+        'linkOpt': 'AND',
+        'builderList': query.sportBuilderList ?? 'cbl_m_List',
+        'value': query.sportId,
+      };
+      if (query.sportLabel != null && query.sportLabel!.isNotEmpty) {
+        entry['value_display'] = query.sportLabel;
+      }
+      groups.add(entry);
+    }
+
+    return groups.isEmpty ? null : groups;
+  }
+
+  List<dynamic>? _buildAppointmentQuerySetting(GymAppointmentQuery query) {
+    final groups = <dynamic>[];
+    final keyword = query.keyword.trim();
+
+    if (keyword.isNotEmpty) {
+      groups.add([
+        {
+          'caption': '场地名称',
+          'name': 'HYSMC',
+          'value': keyword,
+          'builder': 'include',
+          'linkOpt': 'OR',
+        },
+      ]);
+    }
+
+    if (query.statusCode != null && query.statusCode!.isNotEmpty) {
+      groups.add({
+        'name': 'SYZT',
+        'caption': '使用状态',
+        'builder': 'equal',
+        'linkOpt': 'AND',
+        'value': query.statusCode,
+      });
+    }
+
+    return groups.isEmpty ? null : groups;
+  }
+
+  BookingRecord? _mapGymAppointmentRecord(Map<String, dynamic> map) {
+    final venueName = _pickString(map, const [
+      'HYSMC',
+      'BIZ_WID_DISPLAY',
+      'HYSLX_DISPLAY',
+      'venueName',
+      'CDMC',
+    ]);
+    final sysj = _pickString(map, const ['SYSJ', 'SJ', 'timeRange']);
+    final yyrq = _pickString(map, const ['YYRQ', 'YYSJ', 'date']);
+    final wid = _pickString(map, const ['WID', 'wid']) ?? '';
+
+    if (venueName == null) return null;
+
+    final statusRaw = _pickString(map, const ['SYZT', 'PAY_STATUS']);
+    final statusDisplay = _pickString(map, const [
+      'SYZT_DISPLAY',
+      'PAY_STATUS_DISPLAY',
+      'PAY_STATUS',
+    ]);
+    final status =
+        _gymStatusToLabel(statusRaw) ?? statusDisplay ?? statusRaw ?? '未知';
+
+    DateTime? date;
+    if (yyrq != null) {
+      date = DateTime.tryParse(yyrq);
+    }
+
+    return BookingRecord(
+      id: wid,
+      venueName: venueName,
+      slotLabel: sysj ?? '时段未知',
+      date: date ?? DateTime.now(),
+      status: status,
+      statusCode: statusRaw,
+      canCancel: statusRaw == '001',
+    );
+  }
+
+  String? _gymStatusToLabel(String? code) {
+    if (code == null) return null;
+    return switch (code) {
+      '001' => '未使用',
+      '002' => '已使用',
+      '003' => '已取消',
+      _ => null,
+    };
+  }
+
+  AppointmentDetail? _mapAppointmentDetail(Map<String, dynamic> map) {
+    final venueName = _pickString(map, const [
+      'HYSMC',
+      'BIZ_WID_DISPLAY',
+      'HYSLX_DISPLAY',
+      'venueName',
+      'CDMC',
+    ]);
+    final wid = _pickString(map, const ['WID', 'wid']) ?? '';
+    if (venueName == null) return null;
+
+    final sysj = _pickString(map, const ['SYSJ', 'SJ', 'timeRange']);
+    final yyrq = _pickString(map, const ['YYRQ', 'YYSJ', 'date']);
+    final statusRaw = _pickString(map, const ['SYZT']);
+    final statusDisplay = _pickString(map, const ['SYZT_DISPLAY']);
+    final status =
+        _gymStatusToLabel(statusRaw) ?? statusDisplay ?? statusRaw ?? '未知';
+
+    DateTime? date;
+    if (yyrq != null) {
+      date = DateTime.tryParse(yyrq);
+    }
+
+    return AppointmentDetail(
+      id: wid,
+      venueName: venueName,
+      address: _pickString(map, const ['XXDZ', 'address']),
+      slotLabel: sysj ?? '时段未知',
+      date: date ?? DateTime.now(),
+      status: status,
+      statusCode: statusRaw,
+      attendeeName: _pickString(map, const [
+        'YYRXM',
+        'XM',
+        'attendeeName',
+        'XGH_DISPLAY',
+      ]),
+      phone: _pickString(map, const ['LXDH', 'phone']),
+      department: _pickString(map, const [
+        'GLBM_DISPLAY',
+        'GLBMMC',
+        'department',
+      ]),
+      venueType: _pickString(map, const ['HYSLX_DISPLAY', 'HYSLX']),
+      sportName: _pickString(map, const ['GLBM_DISPLAY', 'GLBMMC']),
+      bookingType: _pickString(map, const ['YYLX_DISPLAY', 'YYLX']),
+      attendeeCount: _pickString(map, const ['SYRS']),
+      venueCode: _pickString(map, const ['HYSBH']),
+      businessWid: _pickString(map, const ['BIZ_WID']),
+      cancelReasonCode: _pickString(map, const ['QXYY']),
+      cancelTime: _pickString(map, const ['QXSJ']),
+      rating: _pickString(map, const ['PF']),
+      reviewContent: _pickString(map, const ['PJNR']),
+      checkInTime: _pickString(map, const ['QDSJ']),
+      checkOutTime: _pickString(map, const ['QTSJ']),
+      durationMinutes: _pickString(map, const ['YDSC']),
+      canCancel: statusRaw == '001' || status == '未使用',
+    );
+  }
+
+  DateTime _normalizeDate(DateTime date) {
+    return DateTime(date.year, date.month, date.day);
+  }
+
+  String _formatDate(DateTime date) {
+    final y = date.year.toString().padLeft(4, '0');
+    final m = date.month.toString().padLeft(2, '0');
+    final d = date.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
   }
 
   ServiceCardGroup? _parseServiceCardGroup(
@@ -1452,6 +2777,79 @@ class TestingSchoolPortalGateway implements SchoolPortalGateway {
     required BookingDraft draft,
   }) async {
     return const FailureResult(BusinessFailure('测试环境未接入体育馆预约。'));
+  }
+
+  @override
+  Future<Result<GymBookingEligibility>> checkGymBookingEligibility(
+    AppSession session, {
+    required BookingDraft draft,
+  }) async {
+    return const FailureResult(BusinessFailure('测试环境未接入预约校验。'));
+  }
+
+  @override
+  Future<Result<List<BookingRecord>>> fetchMyGymAppointments(
+    AppSession session, {
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    return const FailureResult(BusinessFailure('测试环境未接入体育馆预约。'));
+  }
+
+  @override
+  Future<Result<GymAppointmentPage>> fetchMyGymAppointmentsPage(
+    AppSession session, {
+    required GymAppointmentQuery query,
+  }) async {
+    return const FailureResult(BusinessFailure('测试环境未接入体育馆预约。'));
+  }
+
+  @override
+  Future<Result<GymVenueSearchPage>> searchGymVenues(
+    AppSession session, {
+    required GymVenueSearchQuery query,
+  }) async {
+    return const FailureResult(BusinessFailure('测试环境未接入体育馆预约。'));
+  }
+
+  @override
+  Future<Result<AppointmentDetail>> fetchGymAppointmentDetail(
+    AppSession session, {
+    required String wid,
+  }) async {
+    return const FailureResult(BusinessFailure('测试环境未接入预约详情。'));
+  }
+
+  @override
+  Future<Result<void>> cancelGymAppointment(
+    AppSession session, {
+    required String appointmentId,
+    String? reason,
+  }) async {
+    return const FailureResult(BusinessFailure('测试环境未接入取消预约。'));
+  }
+
+  @override
+  Future<Result<VenueDetail>> fetchGymRoomDetail(
+    AppSession session, {
+    required String wid,
+  }) async {
+    return const FailureResult(BusinessFailure('测试环境未接入场地详情。'));
+  }
+
+  @override
+  Future<Result<VenueReviewPage>> fetchGymRoomReviews(
+    AppSession session, {
+    required String bizWid,
+    int page = 1,
+    int pageSize = 10,
+  }) async {
+    return const FailureResult(BusinessFailure('测试环境未接入场地评论。'));
+  }
+
+  @override
+  Future<Result<GymSearchModel>> fetchGymSearchModel(AppSession session) async {
+    return const FailureResult(BusinessFailure('测试环境未接入搜索模型。'));
   }
 
   @override

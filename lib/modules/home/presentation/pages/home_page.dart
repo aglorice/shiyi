@@ -12,6 +12,9 @@ import '../../../../app/settings/app_preferences_controller.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../electricity/domain/entities/electricity_dashboard.dart';
 import '../../../electricity/presentation/controllers/electricity_controller.dart';
+import '../../../gym_booking/domain/entities/gym_booking_overview.dart';
+import '../../../gym_booking/presentation/controllers/gym_booking_controller.dart';
+import '../../../gym_booking/presentation/widgets/gym_booking_components.dart';
 import '../../../schedule/domain/entities/schedule_snapshot.dart';
 import '../../../schedule/presentation/controllers/schedule_controller.dart';
 
@@ -23,6 +26,7 @@ class HomePage extends ConsumerWidget {
     final authState = ref.watch(authControllerProvider).value;
     final scheduleAsync = ref.watch(scheduleControllerProvider);
     final electricityAsync = ref.watch(electricityControllerProvider);
+    final appointmentsAsync = ref.watch(myGymAppointmentsProvider);
     final syncState = _HomeSyncState.fromAsyncValue(scheduleAsync);
     final preferences = ref.watch(appPreferencesControllerProvider);
     final petType = PixelPetType.fromName(preferences.pixelPet);
@@ -31,7 +35,13 @@ class HomePage extends ConsumerWidget {
     final dateStr = DateFormat('M月d日 EEEE', 'zh_CN').format(DateTime.now());
 
     return RefreshIndicator(
-      onRefresh: () => ref.read(scheduleControllerProvider.notifier).refresh(),
+      onRefresh: () async {
+        await Future.wait([
+          ref.read(scheduleControllerProvider.notifier).refresh(),
+          ref.read(electricityControllerProvider.notifier).refresh(),
+          ref.read(myGymAppointmentsProvider.notifier).refresh(),
+        ]);
+      },
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 112),
@@ -46,14 +56,16 @@ class HomePage extends ConsumerWidget {
           _TodayCourseCard(scheduleAsync: scheduleAsync),
           const SizedBox(height: 10),
           _ElectricityPreviewCard(electricityAsync: electricityAsync),
+          const SizedBox(height: 10),
+          _GymAppointmentsPreviewCard(appointmentsAsync: appointmentsAsync),
           const SizedBox(height: 22),
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Text(
               '常用入口',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
           ),
           const _QuickActions(),
@@ -185,7 +197,8 @@ class _TodayCourseCard extends StatelessWidget {
     );
   }
 
-  Widget _buildPlaceholder(BuildContext context, {
+  Widget _buildPlaceholder(
+    BuildContext context, {
     required String text,
     required IconData icon,
   }) {
@@ -195,10 +208,9 @@ class _TodayCourseCard extends StatelessWidget {
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: Theme.of(context)
-                .colorScheme
-                .primaryContainer
-                .withValues(alpha: 0.92),
+            color: Theme.of(
+              context,
+            ).colorScheme.primaryContainer.withValues(alpha: 0.92),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(
@@ -214,9 +226,9 @@ class _TodayCourseCard extends StatelessWidget {
             children: [
               Text(
                 '今天的课',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 2),
               Text(
@@ -553,6 +565,234 @@ class _ElectricityPreviewCard extends StatelessWidget {
   }
 }
 
+class _GymAppointmentsPreviewCard extends StatelessWidget {
+  const _GymAppointmentsPreviewCard({required this.appointmentsAsync});
+
+  final AsyncValue<List<BookingRecord>> appointmentsAsync;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return SurfaceCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: () => context.push('/gym-booking/my'),
+                  borderRadius: BorderRadius.circular(16),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFF2D8C8F,
+                            ).withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.event_note_rounded,
+                            size: 20,
+                            color: Color(0xFF2D8C8F),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            '我的场馆预约',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              TextButton.icon(
+                onPressed: () => context.push('/gym-booking/my'),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  foregroundColor: const Color(0xFF2D8C8F),
+                ),
+                icon: const Icon(Icons.chevron_right_rounded, size: 18),
+                label: const Text('查看全部'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          switch (appointmentsAsync) {
+            AsyncData(:final value) =>
+              value.isEmpty
+                  ? _HomeGymEmptyState(
+                      onBook: () => context.push('/gym-booking'),
+                    )
+                  : Column(
+                      children: [
+                        for (final record in value.take(3)) ...[
+                          _HomeAppointmentRow(record: record),
+                          if (record != value.take(3).last)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              child: Divider(
+                                height: 1,
+                                color: colorScheme.outlineVariant.withValues(
+                                  alpha: 0.5,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ],
+                    ),
+            AsyncError(:final error) => Row(
+              children: [
+                Icon(
+                  formatError(error).icon,
+                  size: 18,
+                  color: colorScheme.error,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    formatError(error).message,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.error,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            _ => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 18),
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+          },
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeAppointmentRow extends StatelessWidget {
+  const _HomeAppointmentRow({required this.record});
+
+  final BookingRecord record;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    final statusColor = gymStatusColor(context, record.statusCode);
+
+    return InkWell(
+      onTap: () =>
+          context.push('/gym-booking/appointment/${record.id}', extra: record),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: IntrinsicHeight(
+          child: Row(
+            children: [
+              Container(
+                width: 3,
+                decoration: BoxDecoration(
+                  color: statusColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      record.venueName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${DateFormat('MM-dd', 'zh_CN').format(record.date.toLocal())}  ${record.slotLabel}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              GymStatusBadge(
+                label: record.status,
+                statusCode: record.statusCode,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeGymEmptyState extends StatelessWidget {
+  const _HomeGymEmptyState({required this.onBook});
+
+  final VoidCallback onBook;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Center(
+        child: Column(
+          children: [
+            Icon(
+              Icons.sports_tennis_outlined,
+              size: 32,
+              color: colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '暂无预约记录',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 10),
+            FilledButton.tonal(onPressed: onBook, child: const Text('去预约')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _QuickActions extends StatelessWidget {
   const _QuickActions();
 
@@ -572,12 +812,6 @@ class _QuickActions extends StatelessWidget {
         onTap: () => context.push('/exams'),
       ),
       _QuickActionItem(
-        icon: Icons.notifications_active_outlined,
-        title: '通知',
-        color: const Color(0xFF0E6A71),
-        onTap: () => context.go('/notices'),
-      ),
-      _QuickActionItem(
         icon: Icons.bolt_outlined,
         title: '电量',
         color: const Color(0xFFD28A19),
@@ -588,6 +822,12 @@ class _QuickActions extends StatelessWidget {
         title: '服务',
         color: const Color(0xFF3A6B4F),
         onTap: () => context.push('/services'),
+      ),
+      _QuickActionItem(
+        icon: Icons.sports_tennis_outlined,
+        title: '场馆',
+        color: const Color(0xFF6B5B95),
+        onTap: () => context.push('/gym-booking'),
       ),
     ];
 
@@ -617,10 +857,8 @@ class _QuickActions extends StatelessWidget {
                       const SizedBox(height: 8),
                       Text(
                         item.title,
-                        style:
-                            Theme.of(context).textTheme.labelMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(fontWeight: FontWeight.w600),
                       ),
                     ],
                   ),
@@ -735,8 +973,7 @@ class _HomeSyncState {
         icon: Icons.check_circle_outline_rounded,
         color: Color(0xFF0F6A71),
       ),
-      AsyncError(:final error)
-          when error is SessionExpiredFailure =>
+      AsyncError(:final error) when error is SessionExpiredFailure =>
         const _HomeSyncState(
           label: '登录已过期',
           message: '学校门户登录态已失效，点击重新登录或退出。',
@@ -760,4 +997,3 @@ class _HomeSyncState {
     };
   }
 }
-

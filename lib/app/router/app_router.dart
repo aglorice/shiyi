@@ -7,6 +7,13 @@ import '../../modules/auth/presentation/pages/login_page.dart';
 import '../../modules/electricity/presentation/pages/electricity_page.dart';
 import '../../modules/exams/presentation/pages/exams_page.dart';
 import '../../modules/grades/presentation/pages/grades_page.dart';
+import '../../modules/gym_booking/domain/entities/gym_booking_overview.dart';
+import '../../modules/gym_booking/presentation/pages/gym_appointment_detail_page.dart';
+import '../../modules/gym_booking/presentation/pages/gym_booking_page.dart';
+import '../../modules/gym_booking/presentation/pages/gym_booking_profile_page.dart';
+import '../../modules/gym_booking/presentation/pages/gym_my_appointments_page.dart';
+import '../../modules/gym_booking/presentation/pages/gym_venue_detail_page.dart';
+import '../../modules/gym_booking/presentation/pages/gym_venue_search_page.dart';
 import '../../modules/home/presentation/pages/home_page.dart';
 import '../../modules/notices/domain/entities/campus_notice.dart';
 import '../../modules/notices/presentation/pages/notice_detail_page.dart';
@@ -67,6 +74,59 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/electricity',
         builder: (context, state) => const ElectricityPage(),
+      ),
+      GoRoute(
+        path: '/gym-booking',
+        builder: (context, state) => const GymBookingPage(),
+      ),
+      GoRoute(
+        path: '/gym-booking/profile',
+        builder: (context, state) => const GymBookingProfilePage(),
+      ),
+      GoRoute(
+        path: '/gym-booking/search',
+        builder: (context, state) {
+          final dateText = state.uri.queryParameters['date'];
+          final initialDate = dateText == null
+              ? null
+              : DateTime.tryParse(dateText);
+          return GymVenueSearchPage(initialDate: initialDate);
+        },
+      ),
+      GoRoute(
+        path: '/gym-booking/my',
+        builder: (context, state) => const GymMyAppointmentsPage(),
+      ),
+      GoRoute(
+        path: '/gym-booking/appointment/:wid',
+        builder: (context, state) {
+          final wid = state.pathParameters['wid'] ?? '';
+          final prefillRecord = state.extra is BookingRecord
+              ? state.extra as BookingRecord
+              : null;
+          return GymAppointmentDetailPage(
+            appointmentId: wid,
+            prefillRecord: prefillRecord,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/gym-booking/venue/:wid',
+        builder: (context, state) {
+          final wid = state.pathParameters['wid'] ?? '';
+          final name = state.uri.queryParameters['name'] ?? '场地详情';
+          final bizWid = state.uri.queryParameters['bizWid'];
+          final dateText = state.uri.queryParameters['date'];
+          final initialDate = dateText == null
+              ? null
+              : DateTime.tryParse(dateText);
+          return GymVenueDetailPage(
+            venueId: wid,
+            venueName: name,
+            bizWid: bizWid,
+            initialDate: initialDate,
+          );
+        },
       ),
       GoRoute(
         path: '/services',
