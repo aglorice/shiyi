@@ -53,6 +53,10 @@
 | --- | --- | --- | --- |
 | ![电费](docs/screenshots/electric%20-%20iPhone%2016%20Plus%20-%202026-04-08%20at%2011.06.17.png) | ![服务](docs/screenshots/service%20-%20iPhone%2016%20Plus%20-%202026-04-08%20at%2011.06.23.png) | ![考试](docs/screenshots/exam%20-%20iPhone%2016%20Plus%20-%202026-04-08%20at%2011.07.44.png) | ![设置](docs/screenshots/setting%20-%20iPhone%2016%20Plus%20-%202026-04-08%20at%2011.05.45.png) |
 
+| 体育馆预约 | 个性化推荐 | 场地搜索 |
+| --- | --- | --- |
+| ![体育馆预约](docs/screenshots/order-%20iPhone%2016%20Plus%20-%202026-04-09%20at%2009.24.56.png) | ![个性化推荐](docs/screenshots/like%20-%20iPhone%2016%20Plus%20-%202026-04-09%20at%2009.25.20.png) | ![场地搜索](docs/screenshots/search%20-%20iPhone%2016%20Plus%20-%202026-04-09%20at%2009.25.26.png) |
+
 ## 快速开始
 
 ### 环境要求
