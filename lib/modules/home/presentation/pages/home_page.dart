@@ -31,7 +31,7 @@ class HomePage extends ConsumerWidget {
     final preferences = ref.watch(appPreferencesControllerProvider);
     final petType = PixelPetType.fromName(preferences.pixelPet);
     final rawDisplayName = authState?.session?.displayName.trim() ?? '';
-    final displayName = rawDisplayName.isEmpty ? '同学' : rawDisplayName;
+    final displayName = "宫园薰";
     final dateStr = DateFormat('M月d日 EEEE', 'zh_CN').format(DateTime.now());
 
     return RefreshIndicator(
@@ -629,7 +629,7 @@ class _GymAppointmentsPreviewCard extends StatelessWidget {
                   ),
                   foregroundColor: const Color(0xFF2D8C8F),
                 ),
-                icon: const Icon(Icons.chevron_right_rounded, size: 18),
+
                 label: const Text('查看全部'),
               ),
             ],
