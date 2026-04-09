@@ -5,7 +5,6 @@
 
 #include <functional>
 #include <memory>
-#include <optional>
 #include <string>
 
 // A class abstraction for a high DPI-aware Win32 Window. Intended to be
@@ -102,7 +101,7 @@ class Win32Window {
   // window handle for hosted content.
   HWND child_content_ = nullptr;
 
-  std::optional<Size> min_size_;
+  std::unique_ptr<Size> min_size_;
 };
 
 #endif  // RUNNER_WIN32_WINDOW_H_

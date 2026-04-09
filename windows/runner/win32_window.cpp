@@ -154,7 +154,7 @@ bool Win32Window::Show() {
 }
 
 void Win32Window::SetMinSize(const Size& size) {
-  min_size_ = size;
+  min_size_ = std::make_unique<Size>(size);
 }
 
 // static
