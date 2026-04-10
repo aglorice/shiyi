@@ -15,6 +15,14 @@ Widget buildCampusShellNavigatorContainer(
   StatefulNavigationShell navigationShell,
   List<Widget> children,
 ) {
+  final width = MediaQuery.sizeOf(context).width;
+  if (width >= AppBreakpoints.desktop) {
+    return _DesktopBranchNavigatorContainer(
+      currentIndex: navigationShell.currentIndex,
+      children: children,
+    );
+  }
+
   return _AnimatedBranchNavigatorContainer(
     currentIndex: navigationShell.currentIndex,
     children: children,
@@ -31,6 +39,12 @@ class CampusShell extends ConsumerStatefulWidget {
 }
 
 class _CampusShellState extends ConsumerState<CampusShell> {
+  static const _railCollapsedWidth = 72.0;
+  static const _railExpandedWidth = 196.0;
+  static const _railHeaderReservedHeight = 68.0;
+  static const _railToggleLeftOffset = 16.0;
+  static const _railToggleBottomOffset = 20.0;
+
   bool _sessionDialogShown = false;
   bool _desktopRailExpanded = true;
 
@@ -99,40 +113,44 @@ class _CampusShellState extends ConsumerState<CampusShell> {
           bottom: false,
           child: Row(
             children: [
-              NavigationRail(
-                selectedIndex: widget.navigationShell.currentIndex,
-                onDestinationSelected: (index) {
-                  widget.navigationShell.goBranch(
-                    index,
-                    initialLocation:
-                        index == widget.navigationShell.currentIndex,
-                  );
-                },
-                extended: railExpanded,
-                minWidth: 72,
-                minExtendedWidth: 196,
-                leading: isDesktop
-                    ? _DesktopRailHeader(
-                        expanded: railExpanded,
-                        onToggle: () {
-                          setState(() {
-                            _desktopRailExpanded = !_desktopRailExpanded;
-                          });
-                        },
-                      )
-                    : null,
-                labelType: isDesktop
-                    ? NavigationRailLabelType.none
-                    : NavigationRailLabelType.all,
-                destinations: [
-                  for (final d in _destinations)
-                    NavigationRailDestination(
-                      icon: Icon(d.icon),
-                      selectedIcon: Icon(d.selectedIcon),
-                      label: Text(d.label),
-                    ),
-                ],
-              ),
+              if (isDesktop)
+                _DesktopSidebar(
+                  expanded: railExpanded,
+                  selectedIndex: widget.navigationShell.currentIndex,
+                  destinations: _destinations,
+                  onDestinationSelected: (index) {
+                    widget.navigationShell.goBranch(
+                      index,
+                      initialLocation:
+                          index == widget.navigationShell.currentIndex,
+                    );
+                  },
+                  onToggle: () {
+                    setState(() {
+                      _desktopRailExpanded = !_desktopRailExpanded;
+                    });
+                  },
+                )
+              else
+                NavigationRail(
+                  selectedIndex: widget.navigationShell.currentIndex,
+                  onDestinationSelected: (index) {
+                    widget.navigationShell.goBranch(
+                      index,
+                      initialLocation:
+                          index == widget.navigationShell.currentIndex,
+                    );
+                  },
+                  labelType: NavigationRailLabelType.all,
+                  destinations: [
+                    for (final d in _destinations)
+                      NavigationRailDestination(
+                        icon: Icon(d.icon),
+                        selectedIcon: Icon(d.selectedIcon),
+                        label: Text(d.label),
+                      ),
+                  ],
+                ),
               const VerticalDivider(thickness: 1, width: 1),
               Expanded(child: ConstrainedBody(child: widget.navigationShell)),
             ],
@@ -176,72 +194,206 @@ class _CampusDestination {
   final IconData selectedIcon;
 }
 
-class _DesktopRailHeader extends StatelessWidget {
-  const _DesktopRailHeader({required this.expanded, required this.onToggle});
+class _DesktopSidebar extends StatelessWidget {
+  const _DesktopSidebar({
+    required this.expanded,
+    required this.selectedIndex,
+    required this.destinations,
+    required this.onDestinationSelected,
+    required this.onToggle,
+  });
 
   final bool expanded;
+  final int selectedIndex;
+  final List<_CampusDestination> destinations;
+  final ValueChanged<int> onDestinationSelected;
   final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final railTheme = theme.navigationRailTheme;
 
-    if (expanded) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(14, 16, 12, 12),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(
-                Icons.school_rounded,
-                color: colorScheme.onPrimaryContainer,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              '拾邑',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(width: 8),
-            _RailToggleButton(expanded: true, onPressed: onToggle),
-          ],
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 16, 8, 12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      width: expanded
+          ? _CampusShellState._railExpandedWidth
+          : _CampusShellState._railCollapsedWidth,
+      color: railTheme.backgroundColor ?? theme.scaffoldBackgroundColor,
+      child: Stack(
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(
-              Icons.school_rounded,
-              color: colorScheme.onPrimaryContainer,
+          Padding(
+            padding: const EdgeInsets.only(bottom: 84),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 4),
+                _DesktopRailHeader(expanded: expanded),
+                const SizedBox(height: 6),
+                for (var index = 0; index < destinations.length; index += 1)
+                  _DesktopSidebarDestination(
+                    expanded: expanded,
+                    destination: destinations[index],
+                    selected: selectedIndex == index,
+                    onTap: () => onDestinationSelected(index),
+                    indicatorColor:
+                        railTheme.indicatorColor ??
+                        colorScheme.primaryContainer.withValues(alpha: 0.72),
+                  ),
+              ],
             ),
           ),
-          const SizedBox(height: 10),
-          _RailToggleButton(expanded: false, onPressed: onToggle),
+          Positioned(
+            left: _CampusShellState._railToggleLeftOffset,
+            bottom: _CampusShellState._railToggleBottomOffset,
+            child: _RailToggleButton(expanded: expanded, onPressed: onToggle),
+          ),
         ],
       ),
+    );
+  }
+}
+
+class _DesktopRailHeader extends StatelessWidget {
+  const _DesktopRailHeader({required this.expanded});
+
+  final bool expanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return SizedBox(
+      height: _CampusShellState._railHeaderReservedHeight,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Image.asset(
+                'assets/logo/pixel_cat_logo_1024.png',
+                width: 40,
+                height: 40,
+                fit: BoxFit.cover,
+              ),
+            ),
+            _RailAnimatedLabel(
+              expanded: expanded,
+              child: Text(
+                '拾邑',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DesktopSidebarDestination extends StatelessWidget {
+  const _DesktopSidebarDestination({
+    required this.expanded,
+    required this.destination,
+    required this.selected,
+    required this.onTap,
+    required this.indicatorColor,
+  });
+
+  final bool expanded;
+  final _CampusDestination destination;
+  final bool selected;
+  final VoidCallback onTap;
+  final Color indicatorColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            height: 48,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            decoration: BoxDecoration(
+              color: selected ? indicatorColor : Colors.transparent,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: Icon(
+                    selected ? destination.selectedIcon : destination.icon,
+                    color: selected
+                        ? colorScheme.onPrimaryContainer
+                        : colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                _RailAnimatedLabel(
+                  expanded: expanded,
+                  child: Text(
+                    destination.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                      color: selected
+                          ? colorScheme.onPrimaryContainer
+                          : colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RailAnimatedLabel extends StatelessWidget {
+  const _RailAnimatedLabel({required this.expanded, required this.child});
+
+  final bool expanded;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(end: expanded ? 1 : 0),
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      child: child,
+      builder: (context, value, child) {
+        return ClipRect(
+          child: Align(
+            widthFactor: value,
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: EdgeInsets.only(left: 12 * value),
+              child: Opacity(opacity: value, child: child),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -255,18 +407,31 @@ class _RailToggleButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final shadowColor = colorScheme.shadow.withValues(alpha: 0.08);
 
-    return Material(
-      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.78),
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(14),
-        child: Tooltip(
-          message: expanded ? '收起导航' : '展开导航',
-          child: SizedBox(
-            width: 36,
-            height: 36,
+    return Tooltip(
+      message: expanded ? '收起导航' : '展开导航',
+      child: Material(
+        elevation: 0,
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(16),
+          child: Ink(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: colorScheme.surface.withValues(alpha: 0.96),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: colorScheme.outlineVariant),
+              boxShadow: [
+                BoxShadow(
+                  color: shadowColor,
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
             child: Icon(
               expanded
                   ? Icons.keyboard_double_arrow_left_rounded
@@ -276,6 +441,36 @@ class _RailToggleButton extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _DesktopBranchNavigatorContainer extends StatelessWidget {
+  const _DesktopBranchNavigatorContainer({
+    required this.currentIndex,
+    required this.children,
+  });
+
+  final int currentIndex;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          for (var index = 0; index < children.length; index += 1)
+            Offstage(
+              offstage: index != currentIndex,
+              child: TickerMode(
+                enabled: index == currentIndex,
+                child: RepaintBoundary(child: children[index]),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -335,35 +530,18 @@ class _AnimatedBranchNavigatorContainerState
             child: Stack(
               fit: StackFit.expand,
               children: [
-                for (final index in _visibleIndexes())
-                  if (_shouldKeepMounted(index))
-                    _buildBranch(
-                      index: index,
-                      child: widget.children[index],
-                      progress: progress,
-                    ),
+                for (var index = 0; index < widget.children.length; index += 1)
+                  _buildBranch(
+                    index: index,
+                    child: widget.children[index],
+                    progress: progress,
+                  ),
               ],
             ),
           );
         },
       ),
     );
-  }
-
-  bool _shouldKeepMounted(int index) {
-    if (index == widget.currentIndex) {
-      return true;
-    }
-    return _controller.isAnimating && index == _previousIndex;
-  }
-
-  List<int> _visibleIndexes() {
-    final indexes = <int>[];
-    if (_controller.isAnimating && _previousIndex != widget.currentIndex) {
-      indexes.add(_previousIndex);
-    }
-    indexes.add(widget.currentIndex);
-    return indexes;
   }
 
   Widget _buildBranch({
@@ -394,15 +572,20 @@ class _AnimatedBranchNavigatorContainerState
       _ => 1.0,
     };
 
-    return IgnorePointer(
-      ignoring: !isCurrent,
-      child: TickerMode(
-        enabled: isCurrent || isPrevious,
-        child: RepaintBoundary(
-          child: Transform.scale(
-            scale: scale,
-            alignment: Alignment.center,
-            child: Opacity(opacity: opacity, child: child),
+    final isVisible = isCurrent || isPrevious;
+
+    return Offstage(
+      offstage: !isVisible,
+      child: IgnorePointer(
+        ignoring: !isCurrent,
+        child: TickerMode(
+          enabled: isCurrent || isPrevious,
+          child: RepaintBoundary(
+            child: Transform.scale(
+              scale: scale,
+              alignment: Alignment.center,
+              child: Opacity(opacity: opacity, child: child),
+            ),
           ),
         ),
       ),
