@@ -20,6 +20,14 @@ class Term {
       isSelected: json['isSelected'] as bool? ?? false,
     );
   }
+
+  Term copyWith({String? id, String? name, bool? isSelected}) {
+    return Term(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      isSelected: isSelected ?? this.isSelected,
+    );
+  }
 }
 
 class WeekRange {

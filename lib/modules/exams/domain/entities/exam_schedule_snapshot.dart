@@ -15,6 +15,9 @@ class ExamRecord {
     this.candidateCount,
     this.seatNumber,
     this.remark,
+    this.assessmentForm,
+    this.examPaperMode,
+    this.examCategory,
   });
 
   final String courseName;
@@ -29,6 +32,30 @@ class ExamRecord {
   final String? candidateCount;
   final String? seatNumber;
   final String? remark;
+  final String? assessmentForm;
+  final String? examPaperMode;
+  final String? examCategory;
+
+  List<String> get displayMetaTags {
+    final values = <String>[];
+
+    void append(String? value) {
+      if (value == null) {
+        return;
+      }
+      final normalized = value.trim();
+      if (normalized.isEmpty || values.contains(normalized)) {
+        return;
+      }
+      values.add(normalized);
+    }
+
+    append(assessmentForm);
+    append(examPaperMode);
+    append(examCategory);
+    append(examMethod);
+    return values;
+  }
 
   Map<String, dynamic> toJson() => {
     'courseName': courseName,
@@ -43,6 +70,9 @@ class ExamRecord {
     'candidateCount': candidateCount,
     'seatNumber': seatNumber,
     'remark': remark,
+    'assessmentForm': assessmentForm,
+    'examPaperMode': examPaperMode,
+    'examCategory': examCategory,
   };
 
   factory ExamRecord.fromJson(Map<String, dynamic> json) {
@@ -59,6 +89,9 @@ class ExamRecord {
       candidateCount: json['candidateCount'] as String?,
       seatNumber: json['seatNumber'] as String?,
       remark: json['remark'] as String?,
+      assessmentForm: json['assessmentForm'] as String?,
+      examPaperMode: json['examPaperMode'] as String?,
+      examCategory: json['examCategory'] as String?,
     );
   }
 }

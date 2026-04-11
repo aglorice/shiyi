@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../shared/widgets/app_snackbar.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/constrained_body.dart';
 import '../../domain/entities/exam_schedule_snapshot.dart';
@@ -34,6 +35,9 @@ class _ExamsPageState extends ConsumerState<ExamsPage> {
               children: [
                 _ExamsHero(
                   snapshot: snapshot,
+                  onSwitchTerm: snapshot.availableTerms.isNotEmpty
+                      ? () => _showTermPicker(snapshot)
+                      : null,
                 ),
                 const SizedBox(height: 16),
                 if (snapshot.records.isEmpty)
@@ -59,12 +63,121 @@ class _ExamsPageState extends ConsumerState<ExamsPage> {
       builder: (context) => _ExamDetailSheet(record: record),
     );
   }
+
+  Future<void> _showTermPicker(ExamScheduleSnapshot snapshot) async {
+    final selectedTermId = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '切换学期',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '从学期列表中选择要查看的考试安排。',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF607172),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: snapshot.availableTerms.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final term = snapshot.availableTerms[index];
+                      final isSelected = term.id == snapshot.term.id;
+                      return Material(
+                        color: isSelected
+                            ? Theme.of(context).colorScheme.primaryContainer
+                            : Theme.of(context).colorScheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(20),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: () => Navigator.of(context).pop(term.id),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    term.name,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(
+                                          fontWeight: isSelected
+                                              ? FontWeight.w700
+                                              : FontWeight.w600,
+                                        ),
+                                  ),
+                                ),
+                                if (isSelected)
+                                  Icon(
+                                    Icons.check_circle,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
+                                  )
+                                else
+                                  const Icon(Icons.chevron_right_rounded),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted ||
+        selectedTermId == null ||
+        selectedTermId == snapshot.term.id) {
+      return;
+    }
+
+    final success = await ref
+        .read(examsControllerProvider.notifier)
+        .changeTerm(selectedTermId);
+    if (!mounted) {
+      return;
+    }
+    if (!success) {
+      AppSnackBar.show(
+        context,
+        message: '该学期考试安排加载失败，已恢复到之前的学期',
+        tone: AppSnackBarTone.error,
+      );
+    }
+  }
 }
 
 class _ExamsHero extends StatelessWidget {
-  const _ExamsHero({required this.snapshot});
+  const _ExamsHero({required this.snapshot, this.onSwitchTerm});
 
   final ExamScheduleSnapshot snapshot;
+  final VoidCallback? onSwitchTerm;
 
   @override
   Widget build(BuildContext context) {
@@ -96,12 +209,37 @@ class _ExamsHero extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  snapshot.term.name,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        snapshot.term.name,
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                            ),
+                      ),
+                    ),
+                    if (onSwitchTerm != null)
+                      Material(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(16),
+                        child: InkWell(
+                          onTap: onSwitchTerm,
+                          borderRadius: BorderRadius.circular(16),
+                          child: const SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: Icon(
+                              Icons.swap_horiz_rounded,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 10),
                 Text(
@@ -118,41 +256,6 @@ class _ExamsHero extends StatelessWidget {
                   ),
                 ),
               ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _HeroPill extends StatelessWidget {
-  const _HeroPill({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16, color: Colors.white),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-              ),
             ),
           ],
         ),
@@ -232,10 +335,16 @@ class _ExamCard extends StatelessWidget {
                   Expanded(child: Text(record.location)),
                 ],
               ),
-              if (record.examMethod != null &&
-                  record.examMethod!.isNotEmpty) ...[
+              if (record.displayMetaTags.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                _ExamMetaTag(label: record.examMethod!),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final label in record.displayMetaTags)
+                      _ExamMetaTag(label: label),
+                  ],
+                ),
               ],
               if (record.seatNumber != null &&
                   record.seatNumber!.isNotEmpty) ...[
@@ -332,9 +441,8 @@ class _ExamDetailSheet extends StatelessWidget {
                 runSpacing: 10,
                 children: [
                   _ExamMetaTag(label: record.location),
-                  if (record.examMethod != null &&
-                      record.examMethod!.isNotEmpty)
-                    _ExamMetaTag(label: record.examMethod!),
+                  for (final label in record.displayMetaTags)
+                    _ExamMetaTag(label: label),
                   if (record.seatNumber != null &&
                       record.seatNumber!.isNotEmpty)
                     _ExamMetaTag(label: '座位 ${record.seatNumber}'),

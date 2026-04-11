@@ -25,15 +25,27 @@ class GradesRepositoryImpl implements GradesRepository {
   @override
   Future<Result<GradesSnapshot>> fetchGrades({
     required AppSession session,
+    String? termId,
     bool forceRefresh = false,
   }) async {
-    final remote = await _gateway.fetchGrades(session);
+    final cacheKey = switch (termId) {
+      null => _cacheKey,
+      '' => '$_cacheKey.all',
+      _ => '$_cacheKey.$termId',
+    };
+    final remote = await _gateway.fetchGrades(session, termId: termId);
     if (remote case Success<GradesSnapshot>(data: final snapshot)) {
-      await _cacheStore.writeMap(_cacheKey, snapshot.toJson());
+      await _cacheStore.writeMap(cacheKey, snapshot.toJson());
+      if (termId == null && snapshot.selectedTerm != null) {
+        await _cacheStore.writeMap(
+          '$_cacheKey.${snapshot.selectedTerm!.id}',
+          snapshot.toJson(),
+        );
+      }
       return Success(snapshot);
     }
 
-    final cached = await _cacheStore.readMap(_cacheKey);
+    final cached = await _cacheStore.readMap(cacheKey);
     if (cached != null) {
       _logger.warn('Falling back to cached grades data.');
       return Success(

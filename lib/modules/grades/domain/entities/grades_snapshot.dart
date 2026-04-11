@@ -57,12 +57,14 @@ class GradesSnapshot {
     required this.availableTerms,
     required this.fetchedAt,
     required this.origin,
+    this.selectedTerm,
   });
 
   final List<GradeRecord> records;
   final List<Term> availableTerms;
   final DateTime fetchedAt;
   final DataOrigin origin;
+  final Term? selectedTerm;
 
   List<String> get terms {
     final values = <String>[];
@@ -77,9 +79,7 @@ class GradesSnapshot {
   List<Term> get filterTerms {
     final values = <Term>[...availableTerms];
     for (final termName in terms) {
-      final exists = values.any(
-        (term) => _matchesTermName(termName, term.name),
-      );
+      final exists = values.any((term) => matchesTermName(termName, term.name));
       if (!exists) {
         values.add(Term(id: 'record::$termName', name: termName));
       }
@@ -106,7 +106,7 @@ class GradesSnapshot {
       return const [];
     }
     return records
-        .where((record) => _matchesTermName(record.termName, term.name))
+        .where((record) => matchesTermName(record.termName, term.name))
         .toList();
   }
 
@@ -114,12 +114,14 @@ class GradesSnapshot {
     List<Term>? availableTerms,
     DateTime? fetchedAt,
     DataOrigin? origin,
+    Term? selectedTerm,
   }) {
     return GradesSnapshot(
       records: records,
       availableTerms: availableTerms ?? this.availableTerms,
       fetchedAt: fetchedAt ?? this.fetchedAt,
       origin: origin ?? this.origin,
+      selectedTerm: selectedTerm ?? this.selectedTerm,
     );
   }
 
@@ -128,6 +130,7 @@ class GradesSnapshot {
     'availableTerms': availableTerms.map((term) => term.toJson()).toList(),
     'fetchedAt': fetchedAt.toIso8601String(),
     'origin': origin.name,
+    'selectedTerm': selectedTerm?.toJson(),
   };
 
   factory GradesSnapshot.fromJson(Map<String, dynamic> json) {
@@ -140,10 +143,17 @@ class GradesSnapshot {
           .toList(),
       fetchedAt: DateTime.parse(json['fetchedAt'] as String),
       origin: DataOrigin.values.byName(json['origin'] as String),
+      selectedTerm: json['selectedTerm'] is Map
+          ? Term.fromJson(
+              Map<String, dynamic>.from(
+                (json['selectedTerm'] as Map).cast<dynamic, dynamic>(),
+              ),
+            )
+          : null,
     );
   }
 
-  static bool _matchesTermName(String recordTermName, String termName) {
+  static bool matchesTermName(String recordTermName, String termName) {
     final recordNormalized = _normalizeTermName(recordTermName);
     final termNormalized = _normalizeTermName(termName);
     if (recordNormalized == termNormalized ||

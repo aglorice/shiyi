@@ -144,6 +144,9 @@ class AppSession {
 
   bool get isExpired => DateTime.now().isAfter(expiresAt);
 
+  bool get isUndergraduate => profile?.deptName?.startsWith('本科生') ?? false;
+  bool get isGraduate => profile?.deptName?.startsWith('研究生') ?? false;
+
   String get cookieHeader =>
       cookieHeaderForUri(Uri.parse('https://ehall.wyu.edu.cn/'));
 

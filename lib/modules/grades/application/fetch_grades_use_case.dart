@@ -10,10 +10,12 @@ class FetchGradesUseCase {
 
   Future<Result<GradesSnapshot>> call({
     required AppSession session,
+    String? termId,
     bool forceRefresh = false,
   }) {
     return _repository.fetchGrades(
       session: session,
+      termId: termId,
       forceRefresh: forceRefresh,
     );
   }

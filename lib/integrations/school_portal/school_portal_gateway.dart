@@ -32,7 +32,10 @@ abstract class SchoolPortalGateway {
     AppSession session, {
     String? termId,
   });
-  Future<Result<GradesSnapshot>> fetchGrades(AppSession session);
+  Future<Result<GradesSnapshot>> fetchGrades(
+    AppSession session, {
+    String? termId,
+  });
   Future<Result<ExamScheduleSnapshot>> fetchExamSchedule(
     AppSession session, {
     String? termId,
@@ -132,6 +135,10 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
       return FailureResult(validation.failureOrNull!);
     }
 
+    if (session.isUndergraduate) {
+      return _fetchUndergradSchedule(session, termId: termId);
+    }
+
     final termsResult = await _portalApi.fetchYjsData(
       session,
       path: '/student/default/bindterm',
@@ -211,14 +218,23 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
   }
 
   @override
-  Future<Result<GradesSnapshot>> fetchGrades(AppSession session) async {
-    _logger.info('[Gateway] 开始加载成绩 userId=${session.userId}');
+  Future<Result<GradesSnapshot>> fetchGrades(
+    AppSession session, {
+    String? termId,
+  }) async {
+    _logger.info('[Gateway] 开始加载成绩 userId=${session.userId} termId=$termId');
     final validation = await validateSession(session);
     if (validation.isFailure) {
       _logger.warn('[Gateway] 成绩加载前 session 校验失败');
       return FailureResult(validation.failureOrNull!);
     }
 
+    if (session.isUndergraduate) {
+      return _fetchUndergradGrades(session, termId: termId);
+    }
+
+    var selectedTermId = '';
+    Term? selectedTerm;
     var availableTerms = const <Term>[];
     final termsResult = await _portalApi.fetchYjsData(
       session,
@@ -233,10 +249,30 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
           )
           .toList();
       if (termMaps.isNotEmpty) {
-        final selectedTermMap = _selectScheduleTerm(termMaps);
-        final selectedTermId =
-            _pickString(selectedTermMap, const ['termcode', 'termCode']) ?? '';
+        final selectedTermMap = _isAllTermsSelection(termId)
+            ? null
+            : _selectScheduleTerm(termMaps, requestedTermId: termId);
+        selectedTermId = selectedTermMap == null
+            ? ''
+            : _pickString(selectedTermMap, const ['termcode', 'termCode']) ??
+                  '';
         availableTerms = _mapTerms(termMaps, selectedTermId: selectedTermId);
+        if (selectedTermMap != null && selectedTermId.isNotEmpty) {
+          selectedTerm = availableTerms.firstWhere(
+            (item) => item.id == selectedTermId,
+            orElse: () => Term(
+              id: selectedTermId,
+              name:
+                  _pickString(selectedTermMap, const [
+                    'termname',
+                    'termName',
+                    'name',
+                  ]) ??
+                  selectedTermId,
+              isSelected: _isSelectedTermCurrent(selectedTermMap),
+            ),
+          );
+        }
         _logger.debug('[Gateway] 成绩-学期原始记录数=${termMaps.length}');
       }
     } else {
@@ -253,22 +289,33 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
       return FailureResult(failure);
     }
 
-    final records = _collectRecordMaps(
+    final allRecords = _collectRecordMaps(
       result.dataOrNull,
     ).map(_mapGradeRecord).whereType<GradeRecord>().toList();
     _logger.debug(
       '[Gateway] 成绩原始展开记录数=${_collectRecordMaps(result.dataOrNull).length}',
     );
-    if (records.isEmpty) {
+    if (allRecords.isEmpty) {
       return const FailureResult(ParsingFailure('未解析到成绩记录。'));
     }
+    final records = selectedTerm == null
+        ? allRecords
+        : allRecords
+              .where(
+                (item) => GradesSnapshot.matchesTermName(
+                  item.termName,
+                  selectedTerm!.name,
+                ),
+              )
+              .toList();
 
     _logger.info(
       '[Gateway] 成绩解析完成 recordCount=${records.length} '
-      'terms=${records.map((item) => item.termName).toSet().join(' | ')}',
+      'selectedTerm=${selectedTerm?.name ?? '全部学期'} '
+      'terms=${allRecords.map((item) => item.termName).toSet().join(' | ')}',
     );
     _logger.debug(
-      '[Gateway] 成绩样例=${records.take(5).map((item) => '${item.termName}:${item.courseName}=${item.grade}').join(' | ')}',
+      '[Gateway] 成绩样例=${allRecords.take(5).map((item) => '${item.termName}:${item.courseName}=${item.grade}').join(' | ')}',
     );
     return Success(
       GradesSnapshot(
@@ -276,6 +323,7 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
         availableTerms: availableTerms,
         fetchedAt: DateTime.now(),
         origin: DataOrigin.remote,
+        selectedTerm: selectedTerm,
       ),
     );
   }
@@ -290,6 +338,10 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
     if (validation.isFailure) {
       _logger.warn('[Gateway] 考试安排加载前 session 校验失败');
       return FailureResult(validation.failureOrNull!);
+    }
+
+    if (session.isUndergraduate) {
+      return _fetchUndergradExamSchedule(session, termId: termId);
     }
 
     // 1. 获取学期列表
@@ -1276,6 +1328,418 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
     return _portalApi.prepareServiceLaunch(session, item: item);
   }
 
+  Future<Result<ScheduleSnapshot>> _fetchUndergradSchedule(
+    AppSession session, {
+    String? termId,
+  }) async {
+    final availableTerms = _generateUndergradTerms();
+    final selectedTerm = _selectUndergradTerm(
+      availableTerms,
+      requestedTermId: termId,
+    );
+    _logger.info(
+      '[Gateway] 本科课表目标学期 termId=${selectedTerm.id} termName=${selectedTerm.name}',
+    );
+
+    final result = await _portalApi.fetchJxglData(
+      session,
+      path: '/new/student/xsgrkb/getCalendarWeekDatas',
+      formFields: {'xnxqdm': selectedTerm.id, 'zc': '', 'd1': '', 'd2': ''},
+    );
+    if (result case FailureResult<dynamic>(failure: final failure)) {
+      return FailureResult(failure);
+    }
+
+    final raw = result.dataOrNull;
+    if (raw is Map<String, dynamic>) {
+      final authFailure = _extractUndergradJxglAuthFailure(raw);
+      if (authFailure != null) {
+        _logger.warn('[Gateway] 本科课表教务会话失效 reason=${authFailure.message}');
+        return FailureResult(authFailure);
+      }
+      final code = _pickString(raw, const ['code']);
+      if (code != null && code != '0') {
+        final msg = _pickString(raw, const ['message', 'msg']) ?? '课表数据获取失败';
+        _logger.warn('[Gateway] 本科课表接口返回业务错误 code=$code msg=$msg');
+        return Success(
+          ScheduleSnapshot(
+            term: selectedTerm,
+            availableTerms: availableTerms,
+            courses: const [],
+            fetchedAt: DateTime.now(),
+            origin: DataOrigin.remote,
+          ),
+        );
+      }
+    }
+
+    List<dynamic>? dataRows;
+    if (raw is Map<String, dynamic>) {
+      final data = raw['data'];
+      if (data is List) {
+        dataRows = data;
+      }
+    }
+
+    if (dataRows == null || dataRows.isEmpty) {
+      _logger.info('[Gateway] 本科课表数据为空 term=${selectedTerm.name}');
+      return Success(
+        ScheduleSnapshot(
+          term: selectedTerm,
+          availableTerms: availableTerms,
+          courses: const [],
+          fetchedAt: DateTime.now(),
+          origin: DataOrigin.remote,
+        ),
+      );
+    }
+
+    final snapshot = _mapSchedule(
+      raw: {'rows': dataRows},
+      termId: selectedTerm.id,
+      termName: selectedTerm.name,
+      availableTerms: availableTerms,
+      isCurrentTerm: selectedTerm.isSelected,
+      currentWeekSource: null,
+    );
+    if (snapshot != null) {
+      _logger.info(
+        '[Gateway] 本科课表解析完成 term=${snapshot.term.name} '
+        'courseCount=${snapshot.courses.length} entryCount=${snapshot.entries.length}',
+      );
+    }
+    return snapshot == null
+        ? Success(
+            ScheduleSnapshot(
+              term: selectedTerm,
+              availableTerms: availableTerms,
+              courses: const [],
+              fetchedAt: DateTime.now(),
+              origin: DataOrigin.remote,
+            ),
+          )
+        : Success(snapshot);
+  }
+
+  Future<Result<GradesSnapshot>> _fetchUndergradGrades(
+    AppSession session, {
+    String? termId,
+  }) async {
+    final availableTerms = _generateUndergradTerms();
+    final selectedTerm = _isAllTermsSelection(termId)
+        ? null
+        : _selectUndergradTerm(availableTerms, requestedTermId: termId);
+    _logger.info(
+      '[Gateway] 本科成绩目标学期 termId=${selectedTerm?.id ?? 'ALL'} '
+      'termName=${selectedTerm?.name ?? '全部学期'}',
+    );
+
+    final formFields = <String, dynamic>{
+      'source': 'kccjlist',
+      'page': '1',
+      'rows': '100',
+      'sort': 'xnxqdm,kcmc',
+      'order': 'asc',
+    };
+    if (selectedTerm != null && selectedTerm.id.isNotEmpty) {
+      formFields['xnxqdm'] = selectedTerm.id;
+    }
+
+    final result = await _portalApi.fetchJxglData(
+      session,
+      path: '/new/student/xskccj/kccjDatas',
+      formFields: formFields,
+    );
+    if (result case FailureResult<dynamic>(failure: final failure)) {
+      return FailureResult(failure);
+    }
+
+    final raw = result.dataOrNull;
+    if (raw is! Map<String, dynamic>) {
+      return const FailureResult(ParsingFailure('本科成绩数据格式异常。'));
+    }
+    final authFailure = _extractUndergradJxglAuthFailure(raw);
+    if (authFailure != null) {
+      _logger.warn('[Gateway] 本科成绩教务会话失效 reason=${authFailure.message}');
+      return FailureResult(authFailure);
+    }
+    final rows = raw['rows'];
+    if (rows is! List) {
+      return const FailureResult(ParsingFailure('本科成绩数据为空。'));
+    }
+
+    final records = rows
+        .whereType<Map>()
+        .map(
+          (m) => _mapGradeRecord(
+            Map<String, dynamic>.from(m.cast<dynamic, dynamic>()),
+          ),
+        )
+        .whereType<GradeRecord>()
+        .toList();
+
+    _logger.info(
+      '[Gateway] 本科成绩解析完成 recordCount=${records.length} '
+      'selectedTerm=${selectedTerm?.name ?? '全部学期'} '
+      'terms=${records.map((item) => item.termName).toSet().join(' | ')}',
+    );
+    return Success(
+      GradesSnapshot(
+        records: records,
+        availableTerms: availableTerms,
+        fetchedAt: DateTime.now(),
+        origin: DataOrigin.remote,
+        selectedTerm: selectedTerm,
+      ),
+    );
+  }
+
+  Future<Result<ExamScheduleSnapshot>> _fetchUndergradExamSchedule(
+    AppSession session, {
+    String? termId,
+  }) async {
+    final availableTerms = _generateUndergradTerms();
+    final selectedTerm = _selectUndergradTerm(
+      availableTerms,
+      requestedTermId: termId,
+    );
+
+    final formFields = <String, dynamic>{
+      'page': '1',
+      'rows': '100',
+      'sort': 'xsxm',
+      'order': 'asc',
+    };
+    if (selectedTerm.id.isNotEmpty) {
+      formFields['xnxqdm'] = selectedTerm.id;
+    }
+
+    final result = await _portalApi.fetchJxglData(
+      session,
+      path: '/new/student/xsksrw/paginateXsksrw',
+      formFields: formFields,
+    );
+    if (result case FailureResult<dynamic>(failure: final failure)) {
+      return FailureResult(failure);
+    }
+
+    final raw = result.dataOrNull;
+    if (raw is! Map<String, dynamic>) {
+      return const FailureResult(ParsingFailure('本科考试数据格式异常。'));
+    }
+    final authFailure = _extractUndergradJxglAuthFailure(raw);
+    if (authFailure != null) {
+      _logger.warn('[Gateway] 本科考试教务会话失效 reason=${authFailure.message}');
+      return FailureResult(authFailure);
+    }
+    final rows = raw['rows'];
+    if (rows is! List) {
+      return const FailureResult(ParsingFailure('本科考试数据为空。'));
+    }
+
+    final processedRows = rows.whereType<Map>().map((m) {
+      final map = Map<String, dynamic>.from(m.cast<dynamic, dynamic>());
+
+      final kssj = _pickString(map, const ['kssj']);
+      if (kssj != null && kssj.contains('--')) {
+        final parts = kssj.split('--');
+        if (parts.length == 2) {
+          map['startTime'] = _trimSeconds(parts[0].trim());
+          map['endTime'] = _trimSeconds(parts[1].trim());
+        }
+      }
+
+      final assessmentForm = _pickString(map, const ['khxsmc']);
+      if (assessmentForm != null && assessmentForm.isNotEmpty) {
+        map['assessmentForm'] = assessmentForm;
+      }
+
+      final examPaperMode = _pickString(map, const ['ksxsmc']);
+      if (examPaperMode != null && examPaperMode.isNotEmpty) {
+        map['examPaperMode'] = examPaperMode;
+      }
+
+      final examCategory = _pickString(map, const ['kslbmc']);
+      if (examCategory != null && examCategory.isNotEmpty) {
+        map['examCategory'] = examCategory;
+      }
+
+      final examMethodParts = <String>[
+        if (assessmentForm != null && assessmentForm.isNotEmpty) assessmentForm,
+        if (examPaperMode != null && examPaperMode.isNotEmpty) examPaperMode,
+      ];
+      if (examMethodParts.isNotEmpty) {
+        map['examMethod'] = examMethodParts.join(' · ');
+      } else if (examCategory != null && examCategory.isNotEmpty) {
+        map['examMethod'] = examCategory;
+      }
+
+      final teacher = _pickString(map, const ['jkteaxms']);
+      if (teacher != null && teacher.isNotEmpty) {
+        final teachers = _splitDisplayValues(teacher);
+        if (teachers.isNotEmpty) {
+          map['teacher'] = teachers.first;
+          if (teachers.length > 1) {
+            map['assistantTeacher'] = teachers.skip(1).join('、');
+          }
+        }
+      }
+
+      final zwh = _pickString(map, const ['zwh']);
+      if (zwh != null && zwh.isNotEmpty) {
+        map['seatNumber'] = zwh;
+      }
+
+      final candidateCount = _pickString(map, const ['ksrs', 'xs']);
+      if (candidateCount != null && candidateCount.isNotEmpty) {
+        map['candidateCount'] = candidateCount;
+      }
+
+      final locationParts = <String>[
+        if (_pickString(map, const ['xqmc']) case final String campus) campus,
+        if (_pickString(map, const ['kscdmc']) case final String room) room,
+      ];
+      if (locationParts.isNotEmpty) {
+        map['location'] = locationParts.join(' · ');
+      }
+
+      final remark = _pickString(map, const ['bz']);
+      if (remark != null && remark.isNotEmpty) {
+        map['remark'] = remark;
+      }
+
+      return map;
+    }).toList();
+
+    final records = processedRows
+        .map(_mapExamRecord)
+        .whereType<ExamRecord>()
+        .toList();
+
+    _logger.info('[Gateway] 本科考试安排解析完成 recordCount=${records.length}');
+    return Success(
+      ExamScheduleSnapshot(
+        term: selectedTerm,
+        availableTerms: availableTerms,
+        records: records,
+        fetchedAt: DateTime.now(),
+        origin: DataOrigin.remote,
+      ),
+    );
+  }
+
+  List<Term> _generateUndergradTerms() {
+    final now = DateTime.now();
+    final terms = <Term>[];
+    final currentAcademicYear = now.month >= 9 ? now.year : now.year - 1;
+    final currentTermId = _currentUndergradTermId(now);
+
+    for (
+      var academicYear = currentAcademicYear;
+      academicYear >= currentAcademicYear - 3;
+      academicYear--
+    ) {
+      final firstTerm = _buildUndergradTerm(academicYear, 1);
+      final secondTerm = _buildUndergradTerm(academicYear, 2);
+
+      if (firstTerm.id == currentTermId) {
+        terms
+          ..add(firstTerm.copyWith(isSelected: true))
+          ..add(secondTerm);
+        continue;
+      }
+      if (secondTerm.id == currentTermId) {
+        terms
+          ..add(secondTerm.copyWith(isSelected: true))
+          ..add(firstTerm);
+        continue;
+      }
+
+      terms
+        ..add(secondTerm)
+        ..add(firstTerm);
+    }
+
+    return terms;
+  }
+
+  Term _selectUndergradTerm(List<Term> terms, {String? requestedTermId}) {
+    if (requestedTermId != null && requestedTermId.isNotEmpty) {
+      final match = terms.where((t) => t.id == requestedTermId);
+      if (match.isNotEmpty) return match.first;
+    }
+    final selected = terms.where((t) => t.isSelected);
+    if (selected.isNotEmpty) return selected.first;
+    return terms.isNotEmpty ? terms.last : const Term(id: '', name: '未知学期');
+  }
+
+  Term _buildUndergradTerm(int academicYear, int semesterIndex) {
+    final termCode = '$academicYear${semesterIndex.toString().padLeft(2, '0')}';
+    return Term(
+      id: termCode,
+      name: _formatUndergradTermName(termCode) ?? termCode,
+    );
+  }
+
+  String _currentUndergradTermId(DateTime now) {
+    final academicYear = now.month >= 9 ? now.year : now.year - 1;
+    final semesterIndex = now.month >= 3 && now.month <= 8 ? 2 : 1;
+    return '$academicYear${semesterIndex.toString().padLeft(2, '0')}';
+  }
+
+  String? _formatUndergradTermName(String? termCode) {
+    if (termCode == null) {
+      return null;
+    }
+
+    final match = RegExp(r'^(20\d{2})(0[12])$').firstMatch(termCode);
+    if (match == null) {
+      return termCode;
+    }
+
+    final academicYear = int.parse(match.group(1)!);
+    final semesterCode = match.group(2)!;
+    final displayEndYear = (academicYear + 1) % 100;
+    final semesterLabel = switch (semesterCode) {
+      '01' => '第一学期',
+      '02' => '第二学期',
+      _ => termCode,
+    };
+    return '$academicYear-${displayEndYear.toString().padLeft(2, '0')} $semesterLabel';
+  }
+
+  bool _isAllTermsSelection(String? termId) => termId != null && termId.isEmpty;
+
+  List<String> _splitDisplayValues(String raw) {
+    return raw
+        .split(RegExp(r'[、,，/]'))
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+  }
+
+  Failure? _extractUndergradJxglAuthFailure(Map<String, dynamic> raw) {
+    final code = _pickString(raw, const ['code', 'status']);
+    final message = _pickString(raw, const ['message', 'msg', 'error']);
+    if (code != '-401' &&
+        code != '401' &&
+        !_looksLikeSessionExpiredMessage(message)) {
+      return null;
+    }
+    return SessionExpiredFailure(message ?? '教务系统会话已失效。');
+  }
+
+  bool _looksLikeSessionExpiredMessage(String? message) {
+    if (message == null || message.isEmpty) {
+      return false;
+    }
+    return message.contains('尚未登录') ||
+        message.contains('请先登录') ||
+        message.contains('登录失效') ||
+        message.contains('已在别处登录') ||
+        message.contains('被迫退出');
+  }
+
   GymBookingOverview? _parseGymRoomData(
     dynamic raw, {
     required DateTime targetDate,
@@ -2030,7 +2494,8 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
 
     for (final map in _collectRecordMaps(raw)) {
       final courseName = _pickString(map, const ['kcmc', 'courseName', 'name']);
-      final teacher = _pickString(map, const ['jsmc', 'teacher', 'jsxm']) ?? '';
+      final teacher =
+          _pickString(map, const ['jsmc', 'teacher', 'jsxm', 'teaxms']) ?? '';
       final courseCode = _pickString(map, const ['kcdm', 'kcbh', 'courseCode']);
       final dayOfWeek = _resolveDayOfWeek(map);
       if (courseName == null || dayOfWeek == null) {
@@ -2275,6 +2740,7 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
     final courseName = _pickString(map, const ['kcmc', 'courseName', 'name']);
     final grade = _pickString(map, const [
       'cj',
+      'zcj',
       'zpcj',
       'score',
       'grade',
@@ -2294,11 +2760,12 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
             'xnxqmc',
             'termName',
           ]) ??
+          _formatUndergradTermName(_pickString(map, const ['xnxqdm'])) ??
           '未分学期',
       grade: grade,
       courseCode: _pickString(map, const ['kcbh', 'kcdm', 'courseCode']),
       credit: _pickDouble(map, const ['kcxf', 'xf', 'credit']),
-      gradePoint: _pickDouble(map, const ['jd', 'gradePoint']),
+      gradePoint: _pickDouble(map, const ['jd', 'cjjd', 'gradePoint']),
       assessmentMethod: _pickString(map, const [
         'khfs',
         'ksxz',
@@ -2318,8 +2785,8 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
 
     final dateLabel =
         _pickString(map, const ['ksrq', 'date', 'examDate']) ?? '日期待定';
-    final startTime = _pickString(map, const ['kssj', 'startTime']);
-    final endTime = _pickString(map, const ['jssj', 'endTime']);
+    final startTime = _pickString(map, const ['startTime', 'kssj']);
+    final endTime = _pickString(map, const ['endTime', 'jssj']);
     final timeLabel = switch ((startTime, endTime)) {
       (final String start?, final String end?) => '$start-$end',
       (final String start?, _) => start,
@@ -2327,7 +2794,7 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
     };
     final locationParts = <String>[];
     for (final value in [
-      _pickString(map, const ['dz', 'ksdd', 'location', 'address']),
+      _pickString(map, const ['location', 'dz', 'ksdd', 'kscdmc', 'address']),
       _pickString(map, const ['jsmc', 'roomName']),
     ]) {
       if (value == null || value.isEmpty || locationParts.contains(value)) {
@@ -2344,12 +2811,15 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
       location: location.isEmpty ? '地点待定' : location,
       courseCode: _pickString(map, const ['kcbh', 'courseCode']),
       className: _pickString(map, const ['bjmc', 'className']),
-      examMethod: _pickString(map, const ['khxs', 'examMethod', 'examType']),
+      examMethod: _pickString(map, const ['examMethod', 'khxs', 'examType']),
       primaryTeacher: _pickString(map, const ['zjjs', 'teacher']),
-      assistantTeacher: _pickString(map, const ['fjjs', 'assistantTeacher']),
+      assistantTeacher: _pickString(map, const ['assistantTeacher', 'fjjs']),
       candidateCount: _pickString(map, const ['ksrs', 'candidateCount']),
       seatNumber: _pickString(map, const ['zwh', 'seatNo', 'seatNumber']),
       remark: _pickString(map, const ['bz', 'remark', 'memo']),
+      assessmentForm: _pickString(map, const ['assessmentForm']),
+      examPaperMode: _pickString(map, const ['examPaperMode']),
+      examCategory: _pickString(map, const ['examCategory']),
     );
   }
 
@@ -2468,8 +2938,8 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
   }
 
   (int, int)? _resolveSectionRange(Map<String, dynamic> map) {
-    final start = _pickInt(map, const ['ksjc', 'startSection']);
-    final end = _pickInt(map, const ['jsjc', 'endSection']);
+    final start = _pickInt(map, const ['ksjc', 'startSection', 'ps']);
+    final end = _pickInt(map, const ['jsjc', 'endSection', 'pe']);
     if (start != null && end != null) {
       return (start, end);
     }
@@ -2514,6 +2984,21 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
 
     final raw = _pickString(map, const ['zc', 'weekRange', 'zcsm']);
     if (raw != null) {
+      // Try comma-separated weeks like "9,6,7,8"
+      if (raw.contains(',') && !raw.contains('-')) {
+        final parts = raw
+            .split(',')
+            .map((s) => int.tryParse(s.trim()))
+            .whereType<int>()
+            .toList();
+        if (parts.isNotEmpty) {
+          return WeekRange(
+            startWeek: parts.reduce((a, b) => a < b ? a : b),
+            endWeek: parts.reduce((a, b) => a > b ? a : b),
+          );
+        }
+      }
+
       final match = RegExp(r'(\d+)\D+(\d+)').firstMatch(raw);
       if (match != null) {
         return WeekRange(
@@ -2531,6 +3016,12 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
   }
 
   int _nonce() => _random.nextInt(100000);
+
+  String _trimSeconds(String time) {
+    // "10:30:00" → "10:30"
+    final match = RegExp(r'^(\d{1,2}:\d{2}):\d{2}$').firstMatch(time);
+    return match != null ? match.group(1)! : time;
+  }
 
   String? _pickString(Map<String, dynamic> map, List<String> keys) {
     for (final key in keys) {
@@ -2723,7 +3214,10 @@ class TestingSchoolPortalGateway implements SchoolPortalGateway {
   }
 
   @override
-  Future<Result<GradesSnapshot>> fetchGrades(AppSession session) async {
+  Future<Result<GradesSnapshot>> fetchGrades(
+    AppSession session, {
+    String? termId,
+  }) async {
     return const FailureResult(BusinessFailure('测试环境未接入成绩查询。'));
   }
 

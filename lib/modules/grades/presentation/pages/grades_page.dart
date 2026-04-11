@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../shared/widgets/app_snackbar.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/constrained_body.dart';
 import '../../../../shared/widgets/surface_card.dart';
@@ -17,8 +18,6 @@ class GradesPage extends ConsumerStatefulWidget {
 }
 
 class _GradesPageState extends ConsumerState<GradesPage> {
-  String? _selectedTermId;
-
   @override
   Widget build(BuildContext context) {
     final gradesAsync = ref.watch(gradesControllerProvider);
@@ -31,14 +30,8 @@ class _GradesPageState extends ConsumerState<GradesPage> {
           onRetry: () => ref.read(gradesControllerProvider.notifier).refresh(),
           loadingLabel: '成绩同步中',
           dataBuilder: (snapshot) {
-            final filterTerms = snapshot.filterTerms;
-            final selectedTerm = _selectedTermId == null
-                ? null
-                : snapshot.termById(_selectedTermId!);
-            final effectiveSelectedTermId = selectedTerm?.id;
-            final visibleRecords = selectedTerm == null
-                ? snapshot.records
-                : snapshot.recordsForTermId(selectedTerm.id);
+            final selectedTerm = snapshot.selectedTerm;
+            final visibleRecords = snapshot.records;
             final visibleSections = selectedTerm == null
                 ? snapshot.terms
                 : [selectedTerm.name];
@@ -53,21 +46,22 @@ class _GradesPageState extends ConsumerState<GradesPage> {
                     snapshot: snapshot,
                     selectedTerm: selectedTerm,
                     visibleRecords: visibleRecords,
-                    onPickTerm: () => _showTermPicker(snapshot, selectedTerm),
+                    onPickTerm: () => _showTermPicker(snapshot),
                   ),
                   const SizedBox(height: 16),
                   _TermFilterBar(
-                    terms: filterTerms,
-                    selectedTermId: effectiveSelectedTermId,
+                    terms: snapshot.filterTerms,
+                    selectedTermId: selectedTerm?.id ?? '',
                     onSelected: (termId) {
-                      setState(() {
-                        _selectedTermId = termId;
-                      });
+                      _changeTerm(termId);
                     },
                   ),
                   const SizedBox(height: 16),
-                  if (selectedTerm != null && visibleRecords.isEmpty)
-                    _EmptyTermState(termName: selectedTerm.name)
+                  if (visibleRecords.isEmpty)
+                    _EmptyTermState(
+                      termName: selectedTerm?.name ?? '全部学期',
+                      isAllTerms: selectedTerm == null,
+                    )
                   else
                     for (final sectionTitle in visibleSections) ...[
                       _GradeTermSection(
@@ -89,11 +83,8 @@ class _GradesPageState extends ConsumerState<GradesPage> {
     );
   }
 
-  Future<void> _showTermPicker(
-    GradesSnapshot snapshot,
-    Term? selectedTerm,
-  ) async {
-    final selected = await showModalBottomSheet<String?>(
+  Future<void> _showTermPicker(GradesSnapshot snapshot) async {
+    final selected = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -129,7 +120,9 @@ class _GradesPageState extends ConsumerState<GradesPage> {
                           ? null
                           : snapshot.filterTerms[index - 1];
                       final label = term?.name ?? '全部学期';
-                      final isSelected = term?.id == selectedTerm?.id;
+                      final isSelected = term == null
+                          ? snapshot.selectedTerm == null
+                          : term.id == snapshot.selectedTerm?.id;
 
                       return Material(
                         color: isSelected
@@ -138,7 +131,8 @@ class _GradesPageState extends ConsumerState<GradesPage> {
                         borderRadius: BorderRadius.circular(20),
                         child: InkWell(
                           borderRadius: BorderRadius.circular(20),
-                          onTap: () => Navigator.of(context).pop(term?.id),
+                          onTap: () =>
+                              Navigator.of(context).pop(term?.id ?? ''),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 16,
@@ -188,9 +182,10 @@ class _GradesPageState extends ConsumerState<GradesPage> {
       return;
     }
 
-    setState(() {
-      _selectedTermId = selected;
-    });
+    if (selected == null) {
+      return;
+    }
+    await _changeTerm(selected);
   }
 
   Future<void> _openDetail(GradeRecord record) async {
@@ -199,6 +194,20 @@ class _GradesPageState extends ConsumerState<GradesPage> {
       showDragHandle: true,
       isScrollControlled: true,
       builder: (context) => _GradeDetailSheet(record: record),
+    );
+  }
+
+  Future<void> _changeTerm(String termId) async {
+    final success = await ref
+        .read(gradesControllerProvider.notifier)
+        .changeTerm(termId);
+    if (!mounted || success) {
+      return;
+    }
+    AppSnackBar.show(
+      context,
+      message: '该学期成绩加载失败，已恢复到之前的学期',
+      tone: AppSnackBarTone.error,
     );
   }
 }
@@ -284,8 +293,8 @@ class _TermFilterBar extends StatelessWidget {
   });
 
   final List<Term> terms;
-  final String? selectedTermId;
-  final ValueChanged<String?> onSelected;
+  final String selectedTermId;
+  final ValueChanged<String> onSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -298,8 +307,8 @@ class _TermFilterBar extends StatelessWidget {
             padding: const EdgeInsets.only(right: 8),
             child: ChoiceChip(
               label: const Text('全部'),
-              selected: selectedTermId == null,
-              onSelected: (_) => onSelected(null),
+              selected: selectedTermId.isEmpty,
+              onSelected: (_) => onSelected(''),
             ),
           ),
           for (final term in terms)
@@ -365,9 +374,10 @@ class _GradeTermSection extends StatelessWidget {
 }
 
 class _EmptyTermState extends StatelessWidget {
-  const _EmptyTermState({required this.termName});
+  const _EmptyTermState({required this.termName, required this.isAllTerms});
 
   final String termName;
+  final bool isAllTerms;
 
   @override
   Widget build(BuildContext context) {
@@ -390,14 +400,16 @@ class _EmptyTermState extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            '$termName 暂无成绩',
+            isAllTerms ? '暂无成绩' : '$termName 暂无成绩',
             style: Theme.of(
               context,
             ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
           Text(
-            '这个学期目前没有可展示的成绩记录，可以切回全部学期查看。',
+            isAllTerms
+                ? '当前没有可展示的成绩记录，可以稍后刷新重试。'
+                : '这个学期目前没有可展示的成绩记录，可以切回全部学期查看。',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,

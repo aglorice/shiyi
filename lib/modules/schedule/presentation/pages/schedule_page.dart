@@ -723,9 +723,20 @@ class _WeekTimetable extends StatelessWidget {
                             // Course cards
                             for (final p in model.placements)
                               Positioned(
-                                left: dayOffsets[p.dayOfWeek]! + 1.5,
+                                left:
+                                    dayOffsets[p.dayOfWeek]! +
+                                    1.5 +
+                                    p.laneIndex *
+                                        (((dayWidth - 3) -
+                                                    (p.laneCount - 1) * 2) /
+                                                p.laneCount +
+                                            2),
                                 top: p.startSlotIndex * (rowHeight + gap) + 1.5,
-                                width: dayWidth - 3,
+                                width:
+                                    (((dayWidth - 3) - (p.laneCount - 1) * 2) /
+                                            p.laneCount)
+                                        .clamp(0.0, dayWidth - 3)
+                                        .toDouble(),
                                 height:
                                     (p.slotSpan * rowHeight +
                                             (p.slotSpan - 1) * gap -
@@ -1285,7 +1296,10 @@ class _WeekBoardModel {
       }
     }
 
-    return _WeekBoardModel(slots: slots, placements: placements);
+    return _WeekBoardModel(
+      slots: slots,
+      placements: _resolvePlacementLanes(placements),
+    );
   }
 }
 
@@ -1306,6 +1320,8 @@ class _WeekBoardPlacement {
     required this.startSlotIndex,
     required this.slotSpan,
     required this.accent,
+    this.laneIndex = 0,
+    this.laneCount = 1,
   });
 
   final List<ScheduleEntry> entries;
@@ -1313,8 +1329,126 @@ class _WeekBoardPlacement {
   final int startSlotIndex;
   final int slotSpan;
   final Color accent;
+  final int laneIndex;
+  final int laneCount;
 
   ScheduleEntry get entry => _placementRepresentative(entries);
+
+  int get endSlotIndexExclusive => startSlotIndex + slotSpan;
+
+  _WeekBoardPlacement copyWith({int? laneIndex, int? laneCount}) {
+    return _WeekBoardPlacement(
+      entries: entries,
+      dayOfWeek: dayOfWeek,
+      startSlotIndex: startSlotIndex,
+      slotSpan: slotSpan,
+      accent: accent,
+      laneIndex: laneIndex ?? this.laneIndex,
+      laneCount: laneCount ?? this.laneCount,
+    );
+  }
+}
+
+List<_WeekBoardPlacement> _resolvePlacementLanes(
+  List<_WeekBoardPlacement> placements,
+) {
+  if (placements.isEmpty) {
+    return const [];
+  }
+
+  final resolved = <_WeekBoardPlacement>[];
+  final byDay = <int, List<_WeekBoardPlacement>>{};
+  for (final placement in placements) {
+    byDay.putIfAbsent(placement.dayOfWeek, () => []).add(placement);
+  }
+
+  final sortedDays = byDay.keys.toList()..sort();
+  for (final day in sortedDays) {
+    final dayPlacements = byDay[day]!
+      ..sort((left, right) {
+        final byStart = left.startSlotIndex.compareTo(right.startSlotIndex);
+        if (byStart != 0) {
+          return byStart;
+        }
+        final bySpan = right.slotSpan.compareTo(left.slotSpan);
+        if (bySpan != 0) {
+          return bySpan;
+        }
+        return left.entry.course.name.compareTo(right.entry.course.name);
+      });
+
+    final active = <_ResolvedPlacementLane>[];
+    final cluster = <_ResolvedPlacementLane>[];
+    var clusterLaneCount = 1;
+
+    void flushCluster() {
+      if (cluster.isEmpty) {
+        return;
+      }
+      for (final item in cluster) {
+        resolved.add(
+          item.placement.copyWith(
+            laneIndex: item.laneIndex,
+            laneCount: clusterLaneCount,
+          ),
+        );
+      }
+      cluster.clear();
+      active.clear();
+      clusterLaneCount = 1;
+    }
+
+    for (final placement in dayPlacements) {
+      active.removeWhere(
+        (item) =>
+            item.placement.endSlotIndexExclusive <= placement.startSlotIndex,
+      );
+      if (active.isEmpty) {
+        flushCluster();
+      }
+
+      final usedLaneIndexes = active.map((item) => item.laneIndex).toSet();
+      var laneIndex = 0;
+      while (usedLaneIndexes.contains(laneIndex)) {
+        laneIndex++;
+      }
+
+      final resolvedPlacement = _ResolvedPlacementLane(
+        placement: placement,
+        laneIndex: laneIndex,
+      );
+      active.add(resolvedPlacement);
+      cluster.add(resolvedPlacement);
+      if (laneIndex + 1 > clusterLaneCount) {
+        clusterLaneCount = laneIndex + 1;
+      }
+    }
+
+    flushCluster();
+  }
+
+  resolved.sort((left, right) {
+    final byDay = left.dayOfWeek.compareTo(right.dayOfWeek);
+    if (byDay != 0) {
+      return byDay;
+    }
+    final byStart = left.startSlotIndex.compareTo(right.startSlotIndex);
+    if (byStart != 0) {
+      return byStart;
+    }
+    return left.laneIndex.compareTo(right.laneIndex);
+  });
+  return resolved;
+}
+
+class _ResolvedPlacementLane {
+  const _ResolvedPlacementLane({
+    required this.placement,
+    required this.laneIndex,
+  });
+
+  final _WeekBoardPlacement placement;
+  final int laneIndex;
 }
 
 class _CourseTile extends StatelessWidget {

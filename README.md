@@ -32,12 +32,13 @@
 > 拾取校园点滴，邑你相伴同行。
 >
 > **Current support status**
-> This project currently supports graduate student accounts only.
-> Undergraduate accounts are not supported yet.
+> This project currently supports both undergraduate and graduate student accounts.
+> Academic features adapt to the corresponding school portal routes automatically.
 
 ## Features
 
 - **Unified Authentication** — Secure SSO login via the university portal, credentials stored locally with AES encryption
+- **Multi-Account Support** — Supports both undergraduate and graduate student accounts
 - **Class Schedule** — Weekly and daily views with semester switching
 - **Grades** — Semester-by-semester grade queries
 - **Exams** — Exam schedule with time and location details
