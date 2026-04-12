@@ -442,11 +442,13 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
       return FailureResult(validation.failureOrNull!);
     }
 
-    final beginDate = _formatDate(DateTime.now());
-    final advanceDays = 7;
-    final endDate = _formatDate(
-      DateTime.now().add(Duration(days: advanceDays)),
-    );
+    final today = _normalizeDate(DateTime.now());
+    final weekday = today.weekday; // Monday=1, Sunday=7
+    final weekMonday = today.subtract(Duration(days: weekday - 1));
+    final weekSunday = weekMonday.add(const Duration(days: 6));
+
+    final beginDate = _formatDate(weekMonday);
+    final endDate = _formatDate(weekSunday);
 
     final roomResult = await _portalApi.fetchGymData(
       session,
@@ -454,6 +456,7 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
       formFields: {
         'BEGIN': beginDate,
         'END': endDate,
+        'querySetting': '[]',
         'pageSize': '100',
         'pageNumber': '1',
       },
