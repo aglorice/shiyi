@@ -442,9 +442,9 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
       return FailureResult(validation.failureOrNull!);
     }
 
-    final today = _normalizeDate(DateTime.now());
-    final weekday = today.weekday; // Monday=1, Sunday=7
-    final weekMonday = today.subtract(Duration(days: weekday - 1));
+    final normalized = _normalizeDate(date);
+    final weekday = normalized.weekday; // Monday=1, Sunday=7
+    final weekMonday = normalized.subtract(Duration(days: weekday - 1));
     final weekSunday = weekMonday.add(const Duration(days: 6));
 
     final beginDate = _formatDate(weekMonday);
