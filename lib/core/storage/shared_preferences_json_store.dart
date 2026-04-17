@@ -29,6 +29,15 @@ class SharedPreferencesJsonStore implements JsonCacheStore {
   }
 
   @override
+  Future<void> removeByPrefix(String prefix) async {
+    final keys =
+        _preferences.getKeys().where((key) => key.startsWith(prefix));
+    for (final key in keys) {
+      await _preferences.remove(key);
+    }
+  }
+
+  @override
   Future<void> writeMap(String key, Map<String, dynamic> value) async {
     await _preferences.setString(key, jsonEncode(value));
   }

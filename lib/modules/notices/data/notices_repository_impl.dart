@@ -17,6 +17,7 @@ class NoticesRepositoryImpl implements NoticesRepository {
        _logger = logger;
 
   static const _snapshotCacheKey = 'campus_notices.snapshot.v4';
+  static const _categoryPageCacheKeyPrefix = 'campus_notice.page.v4.';
 
   final WyuNoticeApi _api;
   final JsonCacheStore _cacheStore;
@@ -41,6 +42,9 @@ class NoticesRepositoryImpl implements NoticesRepository {
     final remote = await _api.fetchSnapshot(session: session);
     if (remote case Success<CampusNoticeSnapshot>(data: final snapshot)) {
       await _cacheStore.writeMap(_snapshotCacheKey, snapshot.toJson());
+      if (forceRefresh) {
+        await _cacheStore.removeByPrefix(_categoryPageCacheKeyPrefix);
+      }
       return Success(snapshot);
     }
 
