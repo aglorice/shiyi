@@ -16,6 +16,40 @@ class NoticesPage extends ConsumerStatefulWidget {
 
 class _NoticesPageState extends ConsumerState<NoticesPage> {
   CampusNoticeCategory _selectedCategory = CampusNoticeCategory.campusNotice;
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    if (maxScroll - currentScroll <= 200) {
+      final feed = ref
+          .read(noticesControllerProvider)
+          .asData
+          ?.value
+          .feedFor(_selectedCategory);
+      if (feed != null &&
+          feed.hasMore &&
+          !feed.isLoadingMore) {
+        ref
+            .read(noticesControllerProvider.notifier)
+            .loadNextPage(_selectedCategory);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,6 +69,7 @@ class _NoticesPageState extends ConsumerState<NoticesPage> {
             onRefresh: () =>
                 ref.read(noticesControllerProvider.notifier).refresh(),
             child: CustomScrollView(
+              controller: _scrollController,
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
                 SliverToBoxAdapter(
@@ -113,10 +148,7 @@ class _NoticesPageState extends ConsumerState<NoticesPage> {
                       onSync: () => ref
                           .read(noticesControllerProvider.notifier)
                           .ensureCategoryLoaded(_selectedCategory),
-                      onLoadPrevious: () => ref
-                          .read(noticesControllerProvider.notifier)
-                          .loadPreviousPage(_selectedCategory),
-                      onLoadNext: () => ref
+                      onRetry: () => ref
                           .read(noticesControllerProvider.notifier)
                           .loadNextPage(_selectedCategory),
                     ),
@@ -226,14 +258,12 @@ class _FeedFooter extends StatelessWidget {
   const _FeedFooter({
     required this.feed,
     required this.onSync,
-    required this.onLoadPrevious,
-    required this.onLoadNext,
+    required this.onRetry,
   });
 
   final NoticeFeedState feed;
   final VoidCallback onSync;
-  final VoidCallback onLoadPrevious;
-  final VoidCallback onLoadNext;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -258,60 +288,9 @@ class _FeedFooter extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.tonal(
-                    onPressed: feed.hasPrevious ? onLoadPrevious : null,
-                    child: const Text('上一页'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton.tonal(
-                    onPressed: feed.hasMore ? onLoadNext : null,
-                    child: const Text('下一页'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (feed.currentPage > 0) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 30),
-        child: Column(
-          children: [
-            Text(
-              '第 ${feed.currentPage} / ${feed.totalPages} 页',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.tonal(
-                    onPressed: feed.isLoadingMore || !feed.hasPrevious
-                        ? null
-                        : onLoadPrevious,
-                    child: const Text('上一页'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton.tonal(
-                    onPressed: feed.isLoadingMore || !feed.hasMore
-                        ? null
-                        : onLoadNext,
-                    child: const Text('下一页'),
-                  ),
-                ),
-              ],
+            FilledButton.tonal(
+              onPressed: onRetry,
+              child: const Text('重试'),
             ),
           ],
         ),
@@ -327,6 +306,20 @@ class _FeedFooter extends StatelessWidget {
           child: FilledButton.tonal(
             onPressed: feed.isInitialLoading ? null : onSync,
             child: Text(feed.isInitialLoading ? '同步中...' : '加载完整列表'),
+          ),
+        ),
+      );
+    }
+
+    if (!feed.hasMore) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 30),
+        child: Center(
+          child: Text(
+            '没有更多了',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       );

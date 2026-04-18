@@ -332,7 +332,7 @@ class NoticesController extends AsyncNotifier<NoticesState> {
     _updateFeed(
       category,
       latestFeed.copyWith(
-        items: page.items,
+        items: [...latestFeed.items, ...page.items],
         displayLabel: page.categoryLabel ?? latestFeed.displayLabel,
         prevPageUrl: page.prevPageUrl,
         currentPage: page.currentPage,
