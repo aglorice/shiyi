@@ -32,7 +32,7 @@ class AboutAppPage extends ConsumerWidget {
     );
     final useWideLayout = MediaQuery.sizeOf(context).width >= 860;
     final versionLabel = appInfo?.versionLabel ?? '读取中';
-    final packageName = appInfo?.packageName ?? 'uni_yi';
+    final packageName = appInfo?.packageName ?? 'shiyi';
     final browserRoute = Uri(
       path: '/browser',
       queryParameters: {'title': 'GitHub', 'url': appGitHubRepositoryUrl},
@@ -180,7 +180,7 @@ class _AboutHero extends StatelessWidget {
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Text(
-                          'ABOUT UNI YI',
+                          'ABOUT 拾邑',
                           style: theme.textTheme.labelMedium?.copyWith(
                             color: Colors.white,
                             fontWeight: FontWeight.w700,

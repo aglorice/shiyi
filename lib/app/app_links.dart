@@ -1,3 +1,3 @@
 const appGitHubOwner = 'aglorice';
-const appGitHubRepo = 'uni_yi';
-const appGitHubRepositoryUrl = 'https://github.com/aglorice/uni_yi';
+const appGitHubRepo = 'shiyi';
+const appGitHubRepositoryUrl = 'https://github.com/aglorice/shiyi';
