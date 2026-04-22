@@ -592,7 +592,6 @@ class _NoticeTile extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final dateLabel = DateFormat('MM-dd').format(item.publishedAt);
-    final summary = item.summary?.trim();
 
     return InkWell(
       onTap: onTap,
@@ -615,18 +614,6 @@ class _NoticeTile extends StatelessWidget {
                       height: 1.4,
                     ),
                   ),
-                  if (summary != null && summary.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      summary,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                        height: 1.45,
-                      ),
-                    ),
-                  ],
                   const SizedBox(height: 8),
                   Row(
                     children: [
