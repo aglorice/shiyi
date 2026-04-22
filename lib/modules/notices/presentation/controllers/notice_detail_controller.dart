@@ -1,8 +1,7 @@
 import 'dart:io';
-
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
-import 'package:flutter/services.dart';
 
 import '../../../../app/di/app_providers.dart';
 import '../../../../core/error/failure.dart';
@@ -14,93 +13,35 @@ import '../../domain/entities/campus_notice.dart';
 
 final noticeDetailProvider = FutureProvider.autoDispose
     .family<CampusNoticeDetail, CampusNoticeItem>((ref, item) async {
-      final authState = await ref.watch(authControllerProvider.future);
-      final session = authState.session;
-      if (session == null) {
-        throw const AuthenticationFailure('当前未登录，无法加载通知正文。');
-      }
-
-      final result = await ref.read(fetchNoticeDetailUseCaseProvider)(
-        session: session,
-        item: item,
-        forceRefresh: true,
-      );
-
-      if (result case Success<CampusNoticeDetail>(data: final detail)) {
-        return detail;
-      }
-
-      // If the CAS session expired, try refreshing it and retrying.
-      if (result.failureOrNull is SessionExpiredFailure) {
-        final refreshed = await ref
-            .read(authRepositoryProvider)
-            .refreshSession();
-        if (refreshed case Success<AppSession>(data: final newSession)) {
-          // Persist the new session so other providers benefit too.
-          ref.read(authControllerProvider.notifier).replaceSession(newSession);
-
-          final retry = await ref.read(fetchNoticeDetailUseCaseProvider)(
-            session: newSession,
-            item: item,
-            forceRefresh: true,
-          );
-          return retry.requireValue();
-        }
-        // Refresh failed — prompt re-login.
-        ref
-            .read(authControllerProvider.notifier)
-            .requireReauth(refreshed.failureOrNull!);
-      }
-
-      return result.requireValue();
+      return switch (item.category.board) {
+        NoticeBoardSource.campus => _loadCampusNoticeDetail(ref, item),
+        NoticeBoardSource.graduate => _loadGraduateNoticeDetail(ref, item),
+      };
     });
 
 final noticeImageBytesProvider = FutureProvider.autoDispose
-    .family<Uint8List, ({String url, String referer})>((ref, request) async {
-      final authState = await ref.watch(authControllerProvider.future);
-      final session = authState.session;
-      if (session == null) {
-        throw const AuthenticationFailure('当前未登录，无法加载通知图片。');
-      }
-
-      var result = await ref
-          .read(wyuNoticeApiProvider)
-          .fetchImageBytes(
-            session: session,
-            imageUri: Uri.parse(request.url),
-            referer: Uri.tryParse(request.referer),
-          );
+    .family<
+      Uint8List,
+      ({NoticeBoardSource source, String url, String referer})
+    >((ref, request) async {
+      final result = await switch (request.source) {
+        NoticeBoardSource.campus => _loadCampusNoticeImageBytes(
+          ref,
+          imageUrl: request.url,
+          referer: request.referer,
+        ),
+        NoticeBoardSource.graduate =>
+          ref
+              .read(wyuGraduateNoticeApiProvider)
+              .fetchPublicBytes(
+                resourceUri: Uri.parse(request.url),
+                referer: Uri.tryParse(request.referer),
+              ),
+      };
 
       if (result case Success<Uint8List>(data: final bytes)) {
-        // Keep successful image bytes alive so scrolling out/in doesn't
-        // trigger another protected image fetch.
         ref.keepAlive();
         return bytes;
-      }
-
-      if (result.failureOrNull is SessionExpiredFailure) {
-        final refreshed = await ref
-            .read(authRepositoryProvider)
-            .refreshSession();
-        if (refreshed case Success<AppSession>(data: final newSession)) {
-          ref.read(authControllerProvider.notifier).replaceSession(newSession);
-
-          final retry = await ref
-              .read(wyuNoticeApiProvider)
-              .fetchImageBytes(
-                session: newSession,
-                imageUri: Uri.parse(request.url),
-                referer: Uri.tryParse(request.referer),
-              );
-          if (retry case Success<Uint8List>()) {
-            ref.keepAlive();
-          }
-          return retry.requireValue();
-        }
-
-        ref
-            .read(authControllerProvider.notifier)
-            .requireReauth(refreshed.failureOrNull!);
       }
 
       return result.requireValue();
@@ -122,51 +63,32 @@ class NoticeAttachmentDownloader {
   final Ref _ref;
 
   Future<Result<SavedFile>> download({
+    required NoticeBoardSource source,
     required CampusNoticeAttachment attachment,
     required Uri referer,
     bool pickLocation = false,
   }) async {
     try {
-      final authState = await _ref.read(authControllerProvider.future);
-      final session = authState.session;
-      if (session == null) {
-        return const FailureResult(AuthenticationFailure('当前未登录，无法下载通知附件。'));
-      }
-
-      var result = await _ref
-          .read(wyuNoticeApiProvider)
-          .fetchAttachmentBytes(
-            session: session,
-            attachmentUri: Uri.parse(attachment.url),
-            referer: referer,
-          );
-
-      if (result.failureOrNull is SessionExpiredFailure) {
-        final refreshed = await _ref
-            .read(authRepositoryProvider)
-            .refreshSession();
-        if (refreshed case Success<AppSession>(data: final newSession)) {
-          _ref.read(authControllerProvider.notifier).replaceSession(newSession);
-          result = await _ref
-              .read(wyuNoticeApiProvider)
-              .fetchAttachmentBytes(
-                session: newSession,
-                attachmentUri: Uri.parse(attachment.url),
-                referer: referer,
-              );
-        } else if (refreshed.failureOrNull != null) {
+      final bytesResult = await switch (source) {
+        NoticeBoardSource.campus => _fetchCampusAttachmentBytes(
+          _ref,
+          attachment: attachment,
+          referer: referer,
+        ),
+        NoticeBoardSource.graduate =>
           _ref
-              .read(authControllerProvider.notifier)
-              .requireReauth(refreshed.failureOrNull!);
-          return FailureResult(refreshed.failureOrNull!);
-        }
-      }
+              .read(wyuGraduateNoticeApiProvider)
+              .fetchPublicBytes(
+                resourceUri: Uri.parse(attachment.url),
+                referer: referer,
+              ),
+      };
 
-      if (result case FailureResult<Uint8List>(failure: final failure)) {
+      if (bytesResult case FailureResult<Uint8List>(failure: final failure)) {
         return FailureResult(failure);
       }
 
-      final bytes = result.requireValue();
+      final bytes = bytesResult.requireValue();
       final fileName = _buildFileName(attachment);
       final fileSaver = _ref.read(fileSaveServiceProvider);
       final saved = pickLocation
@@ -214,6 +136,142 @@ class NoticeAttachmentDownloader {
         .trim();
     return sanitized.isEmpty ? '附件' : sanitized;
   }
+}
+
+Future<CampusNoticeDetail> _loadCampusNoticeDetail(
+  Ref ref,
+  CampusNoticeItem item,
+) async {
+  final authState = await ref.watch(authControllerProvider.future);
+  final session = authState.session;
+  if (session == null) {
+    throw const AuthenticationFailure('当前未登录，无法加载通知正文。');
+  }
+
+  final result = await ref.read(fetchNoticeDetailUseCaseProvider)(
+    session: session,
+    item: item,
+    forceRefresh: true,
+  );
+
+  if (result case Success<CampusNoticeDetail>(data: final detail)) {
+    return detail;
+  }
+
+  if (result.failureOrNull is SessionExpiredFailure) {
+    final refreshed = await ref.read(authRepositoryProvider).refreshSession();
+    if (refreshed case Success<AppSession>(data: final newSession)) {
+      ref.read(authControllerProvider.notifier).replaceSession(newSession);
+
+      final retry = await ref.read(fetchNoticeDetailUseCaseProvider)(
+        session: newSession,
+        item: item,
+        forceRefresh: true,
+      );
+      return retry.requireValue();
+    }
+
+    ref
+        .read(authControllerProvider.notifier)
+        .requireReauth(refreshed.failureOrNull!);
+  }
+
+  return result.requireValue();
+}
+
+Future<CampusNoticeDetail> _loadGraduateNoticeDetail(
+  Ref ref,
+  CampusNoticeItem item,
+) async {
+  final result = await ref.read(fetchGraduateNoticeDetailUseCaseProvider)(
+    item: item,
+    forceRefresh: true,
+  );
+  return result.requireValue();
+}
+
+Future<Result<Uint8List>> _loadCampusNoticeImageBytes(
+  Ref ref, {
+  required String imageUrl,
+  required String referer,
+}) async {
+  final authState = await ref.watch(authControllerProvider.future);
+  final session = authState.session;
+  if (session == null) {
+    return const FailureResult(AuthenticationFailure('当前未登录，无法加载通知图片。'));
+  }
+
+  var result = await ref
+      .read(wyuNoticeApiProvider)
+      .fetchImageBytes(
+        session: session,
+        imageUri: Uri.parse(imageUrl),
+        referer: Uri.tryParse(referer),
+      );
+
+  if (result.failureOrNull is SessionExpiredFailure) {
+    final refreshed = await ref.read(authRepositoryProvider).refreshSession();
+    if (refreshed case Success<AppSession>(data: final newSession)) {
+      ref.read(authControllerProvider.notifier).replaceSession(newSession);
+
+      result = await ref
+          .read(wyuNoticeApiProvider)
+          .fetchImageBytes(
+            session: newSession,
+            imageUri: Uri.parse(imageUrl),
+            referer: Uri.tryParse(referer),
+          );
+    } else if (refreshed.failureOrNull != null) {
+      ref
+          .read(authControllerProvider.notifier)
+          .requireReauth(refreshed.failureOrNull!);
+      return FailureResult(refreshed.failureOrNull!);
+    }
+  }
+
+  return result;
+}
+
+Future<Result<Uint8List>> _fetchCampusAttachmentBytes(
+  Ref ref, {
+  required CampusNoticeAttachment attachment,
+  required Uri referer,
+}) async {
+  final authState = await ref.read(authControllerProvider.future);
+  final session = authState.session;
+  if (session == null) {
+    return const FailureResult(AuthenticationFailure('当前未登录，无法下载通知附件。'));
+  }
+
+  var result = await ref
+      .read(wyuNoticeApiProvider)
+      .fetchAttachmentBytes(
+        session: session,
+        attachmentUri: Uri.parse(attachment.url),
+        referer: referer,
+      );
+
+  if (result.failureOrNull is SessionExpiredFailure) {
+    final refreshed = await ref.read(authRepositoryProvider).refreshSession();
+    if (refreshed case Success<AppSession>(data: final newSession)) {
+      ref.read(authControllerProvider.notifier).replaceSession(newSession);
+
+      result = await ref
+          .read(wyuNoticeApiProvider)
+          .fetchAttachmentBytes(
+            session: newSession,
+            attachmentUri: Uri.parse(attachment.url),
+            referer: referer,
+          );
+    } else if (refreshed.failureOrNull != null) {
+      ref
+          .read(authControllerProvider.notifier)
+          .requireReauth(refreshed.failureOrNull!);
+      return FailureResult(refreshed.failureOrNull!);
+    }
+  }
+
+  return result;
 }
 
 String _formatNoticeAttachmentSaveError(PlatformException error) {

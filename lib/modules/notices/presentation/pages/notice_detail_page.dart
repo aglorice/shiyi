@@ -24,7 +24,9 @@ class NoticeDetailPage extends ConsumerWidget {
     final detailAsync = ref.watch(noticeDetailProvider(item));
 
     return Scaffold(
-      appBar: AppBar(title: Text(item.categoryLabel ?? item.category.name)),
+      appBar: AppBar(
+        title: Text(item.categoryLabel ?? item.category.defaultLabel),
+      ),
       body: ConstrainedBody(
         child: AsyncValueView(
           value: detailAsync,
@@ -65,6 +67,7 @@ class NoticeDetailPage extends ConsumerWidget {
                     NoticeImageBlock(:final url) => Padding(
                       padding: const EdgeInsets.only(bottom: 14),
                       child: _NoticeImage(
+                        source: detail.item.category.board,
                         url: url,
                         referer: detail.item.detailUrl,
                       ),
@@ -80,10 +83,7 @@ class NoticeDetailPage extends ConsumerWidget {
                   ),
                   const SizedBox(height: 10),
                   for (final attachment in detail.attachments) ...[
-                    _AttachmentTile(
-                      attachment: attachment,
-                      referer: detail.item.detailUri,
-                    ),
+                    _AttachmentTile(item: detail.item, attachment: attachment),
                     const SizedBox(height: 10),
                   ],
                 ],
@@ -97,10 +97,10 @@ class NoticeDetailPage extends ConsumerWidget {
 }
 
 class _AttachmentTile extends ConsumerWidget {
-  const _AttachmentTile({required this.attachment, required this.referer});
+  const _AttachmentTile({required this.item, required this.attachment});
 
+  final CampusNoticeItem item;
   final CampusNoticeAttachment attachment;
-  final Uri referer;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -202,8 +202,9 @@ class _AttachmentTile extends ConsumerWidget {
     final result = await ref
         .read(noticeAttachmentDownloaderProvider)
         .download(
+          source: item.category.board,
           attachment: attachment,
-          referer: referer,
+          referer: item.detailUri,
           pickLocation: pickLocation,
         );
 
@@ -241,15 +242,20 @@ class _AttachmentTile extends ConsumerWidget {
 enum _AttachmentAction { saveAs }
 
 class _NoticeImage extends ConsumerWidget {
-  const _NoticeImage({required this.url, required this.referer});
+  const _NoticeImage({
+    required this.source,
+    required this.url,
+    required this.referer,
+  });
 
+  final NoticeBoardSource source;
   final String url;
   final String referer;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final imageAsync = ref.watch(
-      noticeImageBytesProvider((url: url, referer: referer)),
+      noticeImageBytesProvider((source: source, url: url, referer: referer)),
     );
     final theme = Theme.of(context);
 

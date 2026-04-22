@@ -34,7 +34,9 @@ class WyuNoticeParser {
     ];
 
     final ordered = <CampusNoticeSection>[];
-    for (final category in CampusNoticeCategory.values) {
+    for (final category in CampusNoticeCategoryX.forBoard(
+      NoticeBoardSource.campus,
+    )) {
       final section = sections.firstWhere(
         (item) => item.category == category,
         orElse: () => CampusNoticeSection(category: category, items: const []),
@@ -118,7 +120,8 @@ class WyuNoticeParser {
     AppLogger? logger,
   }) {
     final document = html_parser.parse(html);
-    final categoryLabel = _extractCategoryPageLabel(document) ?? category.name;
+    final categoryLabel =
+        _extractCategoryPageLabel(document) ?? category.defaultLabel;
     final items = _parseCategoryPageItems(
       document,
       pageUri: pageUri,
@@ -559,6 +562,9 @@ class WyuNoticeParser {
         document.querySelectorAll('.m-nav-z .layui-menu a[href]').isNotEmpty
         ? document.querySelectorAll('.m-nav-z .layui-menu a[href]')
         : document.querySelectorAll('.layui-menu a[href]');
+    final campusCategories = CampusNoticeCategoryX.forBoard(
+      NoticeBoardSource.campus,
+    );
     var index = 0;
 
     for (final link in categoryLinks) {
@@ -577,11 +583,11 @@ class WyuNoticeParser {
             link.attributes['title'] ??
             link.text,
       );
-      if (label.isEmpty || index >= CampusNoticeCategory.values.length) {
+      if (label.isEmpty || index >= campusCategories.length) {
         continue;
       }
 
-      final category = CampusNoticeCategory.values[index];
+      final category = campusCategories[index];
       entries[category] = _CategoryNavEntry(
         label: label,
         url: baseUri.resolve(href).toString(),

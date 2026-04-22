@@ -174,12 +174,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final isLogin = state.matchedLocation == '/login';
       final isAuthenticated = authAsync.value?.isAuthenticated ?? false;
+      final isPublicNoticeRoute =
+          state.matchedLocation == '/notices' ||
+          state.matchedLocation == '/notices/detail';
 
       if (authAsync.isLoading) {
         return null;
       }
 
-      if (!isAuthenticated && !isLogin) {
+      if (!isAuthenticated && !isLogin && !isPublicNoticeRoute) {
         return '/login';
       }
 

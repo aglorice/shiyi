@@ -4,8 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../shared/widgets/async_value_view.dart';
+import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../domain/entities/campus_notice.dart';
+import '../controllers/graduate_notices_controller.dart';
 import '../controllers/notices_controller.dart';
+import '../models/notices_view_state.dart';
 
 class NoticesPage extends ConsumerStatefulWidget {
   const NoticesPage({super.key});
@@ -15,8 +18,27 @@ class NoticesPage extends ConsumerStatefulWidget {
 }
 
 class _NoticesPageState extends ConsumerState<NoticesPage> {
-  CampusNoticeCategory _selectedCategory = CampusNoticeCategory.campusNotice;
   final ScrollController _scrollController = ScrollController();
+  final Map<NoticeBoardSource, CampusNoticeCategory> _selectedCategories = {
+    NoticeBoardSource.campus: CampusNoticeCategory.campusNotice,
+    NoticeBoardSource.graduate: CampusNoticeCategory.graduateNoticeAnnouncement,
+  };
+
+  NoticeBoardSource _selectedSource = NoticeBoardSource.campus;
+  bool _hasManuallySelectedSource = false;
+
+  CampusNoticeCategory get _selectedCategory =>
+      _selectedCategories[_activeSource]!;
+
+  NoticeBoardSource get _activeSource {
+    if (_hasManuallySelectedSource) {
+      return _selectedSource;
+    }
+
+    final isAuthenticated =
+        ref.read(authControllerProvider).asData?.value.isAuthenticated ?? false;
+    return isAuthenticated ? _selectedSource : NoticeBoardSource.graduate;
+  }
 
   @override
   void initState() {
@@ -32,42 +54,122 @@ class _NoticesPageState extends ConsumerState<NoticesPage> {
   }
 
   void _onScroll() {
-    if (!_scrollController.hasClients) return;
+    if (!_scrollController.hasClients) {
+      return;
+    }
+
     final maxScroll = _scrollController.position.maxScrollExtent;
     final currentScroll = _scrollController.position.pixels;
-    if (maxScroll - currentScroll <= 200) {
-      final feed = ref
-          .read(noticesControllerProvider)
-          .asData
-          ?.value
-          .feedFor(_selectedCategory);
-      if (feed != null &&
-          feed.hasMore &&
-          !feed.isLoadingMore) {
+    if (maxScroll - currentScroll > 200) {
+      return;
+    }
+
+    final feed = _currentState()?.feedFor(_selectedCategory);
+    if (feed != null && feed.hasMore && !feed.isLoadingMore) {
+      _loadNextPage();
+    }
+  }
+
+  AsyncValue<NoticesState> _activeNoticesAsync() {
+    return switch (_activeSource) {
+      NoticeBoardSource.campus => ref.watch(noticesControllerProvider),
+      NoticeBoardSource.graduate => ref.watch(
+        graduateNoticesControllerProvider,
+      ),
+    };
+  }
+
+  NoticesState? _currentState() {
+    return switch (_activeSource) {
+      NoticeBoardSource.campus =>
+        ref.read(noticesControllerProvider).asData?.value,
+      NoticeBoardSource.graduate =>
+        ref.read(graduateNoticesControllerProvider).asData?.value,
+    };
+  }
+
+  Future<void> _refreshSelectedSource() {
+    return switch (_activeSource) {
+      NoticeBoardSource.campus =>
+        ref.read(noticesControllerProvider.notifier).refresh(),
+      NoticeBoardSource.graduate =>
+        ref.read(graduateNoticesControllerProvider.notifier).refresh(),
+    };
+  }
+
+  void _ensureCategoryLoaded() {
+    switch (_activeSource) {
+      case NoticeBoardSource.campus:
+        ref
+            .read(noticesControllerProvider.notifier)
+            .ensureCategoryLoaded(_selectedCategory);
+      case NoticeBoardSource.graduate:
+        ref
+            .read(graduateNoticesControllerProvider.notifier)
+            .ensureCategoryLoaded(_selectedCategory);
+    }
+  }
+
+  void _loadNextPage() {
+    switch (_activeSource) {
+      case NoticeBoardSource.campus:
         ref
             .read(noticesControllerProvider.notifier)
             .loadNextPage(_selectedCategory);
-      }
+      case NoticeBoardSource.graduate:
+        ref
+            .read(graduateNoticesControllerProvider.notifier)
+            .loadNextPage(_selectedCategory);
     }
+  }
+
+  void _toggleSource(NoticeBoardSource activeSource) {
+    setState(() {
+      _selectedSource = switch (activeSource) {
+        NoticeBoardSource.campus => NoticeBoardSource.graduate,
+        NoticeBoardSource.graduate => NoticeBoardSource.campus,
+      };
+      _hasManuallySelectedSource = true;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final noticesAsync = ref.watch(noticesControllerProvider);
+    final authAsync = ref.watch(authControllerProvider);
+    final isAuthenticated = authAsync.asData?.value.isAuthenticated ?? false;
+    final activeSource = _hasManuallySelectedSource
+        ? _selectedSource
+        : (isAuthenticated ? _selectedSource : NoticeBoardSource.graduate);
+    final noticesAsync = _activeNoticesAsync();
+    final categories = CampusNoticeCategoryX.forBoard(activeSource);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('通知')),
+      appBar: AppBar(
+        title: const Text('通知'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: TextButton.icon(
+              onPressed: () => _toggleSource(activeSource),
+              icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+              label: Text(switch (activeSource) {
+                NoticeBoardSource.campus => '校级',
+                NoticeBoardSource.graduate => '研究生',
+              }),
+            ),
+          ),
+        ],
+      ),
       body: AsyncValueView(
         value: noticesAsync,
-        onRetry: () => ref.read(noticesControllerProvider.notifier).refresh(),
+        onRetry: _refreshSelectedSource,
         loadingLabel: '通知同步中',
         dataBuilder: (state) {
           final feed = state.feedFor(_selectedCategory);
           final selectedLabel = state.labelFor(_selectedCategory);
 
           return RefreshIndicator(
-            onRefresh: () =>
-                ref.read(noticesControllerProvider.notifier).refresh(),
+            onRefresh: _refreshSelectedSource,
             child: CustomScrollView(
               controller: _scrollController,
               physics: const AlwaysScrollableScrollPhysics(),
@@ -76,11 +178,12 @@ class _NoticesPageState extends ConsumerState<NoticesPage> {
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                     child: _CategoryBar(
+                      categories: categories,
                       state: state,
                       selectedCategory: _selectedCategory,
                       onSelected: (value) {
                         setState(() {
-                          _selectedCategory = value;
+                          _selectedCategories[activeSource] = value;
                         });
                       },
                     ),
@@ -100,15 +203,14 @@ class _NoticesPageState extends ConsumerState<NoticesPage> {
                             feed.listPageUrl != null &&
                             feed.listPageUrl!.isNotEmpty,
                         isSyncing: feed.isInitialLoading,
-                        onSync: () => ref
-                            .read(noticesControllerProvider.notifier)
-                            .ensureCategoryLoaded(_selectedCategory),
+                        onSync: _ensureCategoryLoaded,
                       ),
                     ),
                   )
                 else ...[
                   SliverToBoxAdapter(
                     child: _FeedHeader(
+                      source: activeSource,
                       feed: feed,
                       categoryLabel: selectedLabel,
                     ),
@@ -145,12 +247,8 @@ class _NoticesPageState extends ConsumerState<NoticesPage> {
                   SliverToBoxAdapter(
                     child: _FeedFooter(
                       feed: feed,
-                      onSync: () => ref
-                          .read(noticesControllerProvider.notifier)
-                          .ensureCategoryLoaded(_selectedCategory),
-                      onRetry: () => ref
-                          .read(noticesControllerProvider.notifier)
-                          .loadNextPage(_selectedCategory),
+                      onSync: _ensureCategoryLoaded,
+                      onRetry: _loadNextPage,
                     ),
                   ),
                 ],
@@ -165,11 +263,13 @@ class _NoticesPageState extends ConsumerState<NoticesPage> {
 
 class _CategoryBar extends StatelessWidget {
   const _CategoryBar({
+    required this.categories,
     required this.state,
     required this.selectedCategory,
     required this.onSelected,
   });
 
+  final List<CampusNoticeCategory> categories;
   final NoticesState state;
   final CampusNoticeCategory selectedCategory;
   final ValueChanged<CampusNoticeCategory> onSelected;
@@ -180,15 +280,14 @@ class _CategoryBar extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          for (final category in CampusNoticeCategory.values) ...[
+          for (final category in categories) ...[
             _CategoryChip(
-              category: category,
               label: state.labelFor(category),
               count: state.feedFor(category).items.length,
               selected: category == selectedCategory,
               onTap: () => onSelected(category),
             ),
-            const SizedBox(width: 10),
+            if (category != categories.last) const SizedBox(width: 10),
           ],
         ],
       ),
@@ -197,8 +296,13 @@ class _CategoryBar extends StatelessWidget {
 }
 
 class _FeedHeader extends StatelessWidget {
-  const _FeedHeader({required this.feed, required this.categoryLabel});
+  const _FeedHeader({
+    required this.source,
+    required this.feed,
+    required this.categoryLabel,
+  });
 
+  final NoticeBoardSource source;
   final NoticeFeedState feed;
   final String categoryLabel;
 
@@ -211,9 +315,17 @@ class _FeedHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _HeaderTag(label: source.label),
+              _HeaderTag(label: categoryLabel),
+            ],
+          ),
           if (feed.isInitialLoading && feed.items.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.only(top: 12),
               child: Row(
                 children: [
                   const SizedBox(
@@ -234,21 +346,54 @@ class _FeedHeader extends StatelessWidget {
           if (feed.errorMessage != null &&
               feed.errorMessage!.isNotEmpty &&
               feed.items.isNotEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.errorContainer.withValues(alpha: 0.42),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Text(
-                feed.errorMessage!,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onErrorContainer,
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.errorContainer.withValues(
+                    alpha: 0.42,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Text(
+                  feed.errorMessage!,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onErrorContainer,
+                  ),
                 ),
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _HeaderTag extends StatelessWidget {
+  const _HeaderTag({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: theme.colorScheme.primary,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -288,10 +433,7 @@ class _FeedFooter extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            FilledButton.tonal(
-              onPressed: onRetry,
-              child: const Text('重试'),
-            ),
+            FilledButton.tonal(onPressed: onRetry, child: const Text('重试')),
           ],
         ),
       );
@@ -373,14 +515,12 @@ class _EmptyFeedState extends StatelessWidget {
 
 class _CategoryChip extends StatelessWidget {
   const _CategoryChip({
-    required this.category,
     required this.label,
     required this.count,
     required this.selected,
     required this.onTap,
   });
 
-  final CampusNoticeCategory category;
   final String label;
   final int count;
   final bool selected;
@@ -452,6 +592,7 @@ class _NoticeTile extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final dateLabel = DateFormat('MM-dd').format(item.publishedAt);
+    final summary = item.summary?.trim();
 
     return InkWell(
       onTap: onTap,
@@ -474,24 +615,40 @@ class _NoticeTile extends StatelessWidget {
                       height: 1.4,
                     ),
                   ),
+                  if (summary != null && summary.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      summary,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        height: 1.45,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: colorScheme.primary.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          item.categoryLabel ?? item.category.name,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: colorScheme.primary,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 11,
+                      Flexible(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            item.categoryLabel ?? item.category.defaultLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 11,
+                            ),
                           ),
                         ),
                       ),

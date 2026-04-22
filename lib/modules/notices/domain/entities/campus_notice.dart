@@ -1,11 +1,30 @@
 import '../../../../core/models/data_origin.dart';
 
+enum NoticeBoardSource { campus, graduate }
+
+extension NoticeBoardSourceX on NoticeBoardSource {
+  String get cacheKey => switch (this) {
+    NoticeBoardSource.campus => 'campus',
+    NoticeBoardSource.graduate => 'graduate',
+  };
+
+  String get label => switch (this) {
+    NoticeBoardSource.campus => '校级通知',
+    NoticeBoardSource.graduate => '研究生通知',
+  };
+}
+
 enum CampusNoticeCategory {
   campusNotice,
   campusNewsletter,
   publicAnnouncement,
   lectureReport,
   weeklySchedule,
+  graduateNoticeAnnouncement,
+  graduateDepartmentNews,
+  graduateAdmissions,
+  graduateTheoryStudy,
+  graduateEducationBriefing,
 }
 
 extension CampusNoticeCategoryX on CampusNoticeCategory {
@@ -15,6 +34,40 @@ extension CampusNoticeCategoryX on CampusNoticeCategory {
     CampusNoticeCategory.publicAnnouncement => 'public_announcement',
     CampusNoticeCategory.lectureReport => 'lecture_report',
     CampusNoticeCategory.weeklySchedule => 'weekly_schedule',
+    CampusNoticeCategory.graduateNoticeAnnouncement =>
+      'graduate_notice_announcement',
+    CampusNoticeCategory.graduateDepartmentNews => 'graduate_department_news',
+    CampusNoticeCategory.graduateAdmissions => 'graduate_admissions',
+    CampusNoticeCategory.graduateTheoryStudy => 'graduate_theory_study',
+    CampusNoticeCategory.graduateEducationBriefing =>
+      'graduate_education_briefing',
+  };
+
+  NoticeBoardSource get board => switch (this) {
+    CampusNoticeCategory.campusNotice ||
+    CampusNoticeCategory.campusNewsletter ||
+    CampusNoticeCategory.publicAnnouncement ||
+    CampusNoticeCategory.lectureReport ||
+    CampusNoticeCategory.weeklySchedule => NoticeBoardSource.campus,
+    CampusNoticeCategory.graduateNoticeAnnouncement ||
+    CampusNoticeCategory.graduateDepartmentNews ||
+    CampusNoticeCategory.graduateAdmissions ||
+    CampusNoticeCategory.graduateTheoryStudy ||
+    CampusNoticeCategory.graduateEducationBriefing =>
+      NoticeBoardSource.graduate,
+  };
+
+  String get defaultLabel => switch (this) {
+    CampusNoticeCategory.campusNotice => '校内通知',
+    CampusNoticeCategory.campusNewsletter => '校园快讯',
+    CampusNoticeCategory.publicAnnouncement => '公示公告',
+    CampusNoticeCategory.lectureReport => '讲座报告',
+    CampusNoticeCategory.weeklySchedule => '校历周程',
+    CampusNoticeCategory.graduateNoticeAnnouncement => '通知公告',
+    CampusNoticeCategory.graduateDepartmentNews => '部门新闻',
+    CampusNoticeCategory.graduateAdmissions => '研究生招生信息',
+    CampusNoticeCategory.graduateTheoryStudy => '理论学习',
+    CampusNoticeCategory.graduateEducationBriefing => '研究生教育工作简报',
   };
 
   static CampusNoticeCategory fromName(String value) {
@@ -22,6 +75,12 @@ extension CampusNoticeCategoryX on CampusNoticeCategory {
       (item) => item.name == value,
       orElse: () => CampusNoticeCategory.campusNotice,
     );
+  }
+
+  static List<CampusNoticeCategory> forBoard(NoticeBoardSource board) {
+    return CampusNoticeCategory.values
+        .where((item) => item.board == board)
+        .toList(growable: false);
   }
 }
 
@@ -155,7 +214,7 @@ class CampusNoticeSnapshot {
     if (label != null && label.isNotEmpty) {
       return label;
     }
-    return category.name;
+    return category.defaultLabel;
   }
 
   CampusNoticeSnapshot copyWith({

@@ -14,6 +14,7 @@ import '../../integrations/app_update/github_release_api.dart';
 import '../../integrations/campus_notices/wyu_notice_api.dart';
 import '../../integrations/electricity_recharge/wyu_electricity_api.dart';
 import '../../integrations/electricity_recharge/wyu_electricity_parser.dart';
+import '../../integrations/graduate_notices/wyu_graduate_notice_api.dart';
 import '../../integrations/school_portal/school_portal_gateway.dart';
 import '../../integrations/school_portal/sso/credential_transformer.dart';
 import '../../integrations/school_portal/sso/session_validator.dart';
@@ -51,7 +52,12 @@ import '../../modules/gym_booking/domain/repositories/gym_booking_repository.dar
 import '../../modules/notices/application/fetch_notice_detail_use_case.dart';
 import '../../modules/notices/application/fetch_notice_category_page_use_case.dart';
 import '../../modules/notices/application/fetch_notices_use_case.dart';
+import '../../modules/notices/application/fetch_graduate_notice_category_page_use_case.dart';
+import '../../modules/notices/application/fetch_graduate_notice_detail_use_case.dart';
+import '../../modules/notices/application/fetch_graduate_notices_use_case.dart';
+import '../../modules/notices/data/graduate_notices_repository_impl.dart';
 import '../../modules/notices/data/notices_repository_impl.dart';
+import '../../modules/notices/domain/repositories/graduate_notices_repository.dart';
 import '../../modules/notices/domain/repositories/notices_repository.dart';
 import '../../modules/schedule/application/fetch_schedule_use_case.dart';
 import '../../modules/schedule/data/schedule_repository_impl.dart';
@@ -83,18 +89,16 @@ final jsonCacheStoreProvider = Provider<JsonCacheStore>(
   (ref) => SharedPreferencesJsonStore(ref.watch(sharedPreferencesProvider)),
 );
 
-final credentialVaultProvider = Provider<CredentialVault>(
-  (ref) {
-    final preferences = ref.watch(sharedPreferencesProvider);
-    if (kIsWeb ||
-        defaultTargetPlatform == TargetPlatform.macOS ||
-        defaultTargetPlatform == TargetPlatform.windows ||
-        defaultTargetPlatform == TargetPlatform.linux) {
-      return SharedPreferencesCredentialVault(preferences);
-    }
-    return SecureCredentialVault(const FlutterSecureStorage());
-  },
-);
+final credentialVaultProvider = Provider<CredentialVault>((ref) {
+  final preferences = ref.watch(sharedPreferencesProvider);
+  if (kIsWeb ||
+      defaultTargetPlatform == TargetPlatform.macOS ||
+      defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.linux) {
+    return SharedPreferencesCredentialVault(preferences);
+  }
+  return SecureCredentialVault(const FlutterSecureStorage());
+});
 
 final sessionStoreProvider = Provider<SessionStore>(
   (ref) => SharedPreferencesSessionStore(ref.watch(sharedPreferencesProvider)),
@@ -200,9 +204,24 @@ final wyuNoticeApiProvider = Provider<WyuNoticeApi>(
   ),
 );
 
+final wyuGraduateNoticeApiProvider = Provider<WyuGraduateNoticeApi>(
+  (ref) => WyuGraduateNoticeApi(
+    logger: ref.watch(appLoggerProvider),
+    userAgent: ref.watch(userAgentPoolProvider).get(),
+  ),
+);
+
 final noticesRepositoryProvider = Provider<NoticesRepository>(
   (ref) => NoticesRepositoryImpl(
     api: ref.watch(wyuNoticeApiProvider),
+    cacheStore: ref.watch(jsonCacheStoreProvider),
+    logger: ref.watch(appLoggerProvider),
+  ),
+);
+
+final graduateNoticesRepositoryProvider = Provider<GraduateNoticesRepository>(
+  (ref) => GraduateNoticesRepositoryImpl(
+    api: ref.watch(wyuGraduateNoticeApiProvider),
     cacheStore: ref.watch(jsonCacheStoreProvider),
     logger: ref.watch(appLoggerProvider),
   ),
@@ -286,6 +305,27 @@ final fetchNoticeCategoryPageUseCaseProvider =
 final fetchNoticeDetailUseCaseProvider = Provider<FetchNoticeDetailUseCase>(
   (ref) => FetchNoticeDetailUseCase(ref.watch(noticesRepositoryProvider)),
 );
+
+final fetchGraduateNoticesUseCaseProvider =
+    Provider<FetchGraduateNoticesUseCase>(
+      (ref) => FetchGraduateNoticesUseCase(
+        ref.watch(graduateNoticesRepositoryProvider),
+      ),
+    );
+
+final fetchGraduateNoticeCategoryPageUseCaseProvider =
+    Provider<FetchGraduateNoticeCategoryPageUseCase>(
+      (ref) => FetchGraduateNoticeCategoryPageUseCase(
+        ref.watch(graduateNoticesRepositoryProvider),
+      ),
+    );
+
+final fetchGraduateNoticeDetailUseCaseProvider =
+    Provider<FetchGraduateNoticeDetailUseCase>(
+      (ref) => FetchGraduateNoticeDetailUseCase(
+        ref.watch(graduateNoticesRepositoryProvider),
+      ),
+    );
 
 final fetchAppointmentDetailUseCaseProvider =
     Provider<FetchAppointmentDetailUseCase>(
