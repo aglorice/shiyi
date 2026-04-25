@@ -18,6 +18,8 @@ import '../../../gym_booking/presentation/controllers/gym_booking_controller.dar
 import '../../../gym_booking/presentation/widgets/gym_booking_components.dart';
 import '../../../schedule/domain/entities/schedule_snapshot.dart';
 import '../../../schedule/presentation/controllers/schedule_controller.dart';
+import '../../../school_news/presentation/controllers/school_news_controller.dart';
+import '../../../school_news/presentation/models/school_news_feed_state.dart';
 
 class HomePage extends ConsumerWidget {
   const HomePage({super.key});
@@ -28,6 +30,7 @@ class HomePage extends ConsumerWidget {
     final scheduleAsync = ref.watch(scheduleControllerProvider);
     final electricityAsync = ref.watch(electricityControllerProvider);
     final appointmentsAsync = ref.watch(myGymAppointmentsProvider);
+    final schoolNewsAsync = ref.watch(schoolNewsControllerProvider);
     final syncState = _HomeSyncState.fromAsyncValue(scheduleAsync);
     final preferences = ref.watch(appPreferencesControllerProvider);
     final petType = PixelPetType.fromName(preferences.pixelPet);
@@ -50,6 +53,8 @@ class HomePage extends ConsumerWidget {
                   petType: petType,
                 ),
                 const SizedBox(height: 18),
+                _SchoolNewsOverviewCard(newsAsync: schoolNewsAsync),
+                const SizedBox(height: 14),
                 _DesktopOverviewGrid(
                   scheduleAsync: scheduleAsync,
                   electricityAsync: electricityAsync,
@@ -72,6 +77,8 @@ class HomePage extends ConsumerWidget {
                   petType: petType,
                 ),
                 const SizedBox(height: 14),
+                _SchoolNewsOverviewCard(newsAsync: schoolNewsAsync),
+                const SizedBox(height: 10),
                 _TodayCourseCard(scheduleAsync: scheduleAsync),
                 const SizedBox(height: 10),
                 _ElectricityPreviewCard(electricityAsync: electricityAsync),
@@ -95,6 +102,7 @@ class HomePage extends ConsumerWidget {
               ref.read(scheduleControllerProvider.notifier).refresh(),
               ref.read(electricityControllerProvider.notifier).refresh(),
               ref.read(myGymAppointmentsProvider.notifier).refresh(),
+              ref.read(schoolNewsControllerProvider.notifier).refresh(),
             ]);
           },
           child: ListView(
@@ -104,6 +112,148 @@ class HomePage extends ConsumerWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _SchoolNewsOverviewCard extends StatelessWidget {
+  const _SchoolNewsOverviewCard({required this.newsAsync});
+
+  final AsyncValue<SchoolNewsFeedState> newsAsync;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    const accent = Color(0xFF0A5D63);
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => context.push('/school-news'),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.newspaper_rounded,
+                  color: accent,
+                  size: 21,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: switch (newsAsync) {
+                  AsyncData(:final value) => _buildContent(context, value),
+                  AsyncError(:final error) => _buildError(context, error),
+                  _ => _buildLoading(context),
+                },
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.62),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent(BuildContext context, SchoolNewsFeedState state) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final latest = state.items.isEmpty ? null : state.items.first;
+    final dateLabel = latest == null
+        ? '官方动态'
+        : DateFormat('MM月dd日', 'zh_CN').format(latest.publishedAt);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '学校要闻',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          latest?.title ?? '查看五邑大学最新学校要闻',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+            height: 1.42,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '官方动态 · $dateLabel',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: const Color(0xFF0A5D63),
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoading(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '学校要闻',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '正在同步官方动态...',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildError(BuildContext context, Object error) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '学校要闻',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          formatError(error).message,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+            height: 1.42,
+          ),
+        ),
+      ],
     );
   }
 }

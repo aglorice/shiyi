@@ -15,6 +15,7 @@ import '../../integrations/campus_notices/wyu_notice_api.dart';
 import '../../integrations/electricity_recharge/wyu_electricity_api.dart';
 import '../../integrations/electricity_recharge/wyu_electricity_parser.dart';
 import '../../integrations/graduate_notices/wyu_graduate_notice_api.dart';
+import '../../integrations/school_news/wyu_school_news_api.dart';
 import '../../integrations/school_portal/school_portal_gateway.dart';
 import '../../integrations/school_portal/sso/credential_transformer.dart';
 import '../../integrations/school_portal/sso/session_validator.dart';
@@ -62,6 +63,10 @@ import '../../modules/notices/domain/repositories/notices_repository.dart';
 import '../../modules/schedule/application/fetch_schedule_use_case.dart';
 import '../../modules/schedule/data/schedule_repository_impl.dart';
 import '../../modules/schedule/domain/repositories/schedule_repository.dart';
+import '../../modules/school_news/application/fetch_school_news_detail_use_case.dart';
+import '../../modules/school_news/application/fetch_school_news_page_use_case.dart';
+import '../../modules/school_news/data/school_news_repository_impl.dart';
+import '../../modules/school_news/domain/repositories/school_news_repository.dart';
 
 final sharedPreferencesProvider = Provider<SharedPreferences>(
   (ref) => throw UnimplementedError('SharedPreferences must be bootstrapped.'),
@@ -211,6 +216,13 @@ final wyuGraduateNoticeApiProvider = Provider<WyuGraduateNoticeApi>(
   ),
 );
 
+final wyuSchoolNewsApiProvider = Provider<WyuSchoolNewsApi>(
+  (ref) => WyuSchoolNewsApi(
+    logger: ref.watch(appLoggerProvider),
+    userAgent: ref.watch(userAgentPoolProvider).get(),
+  ),
+);
+
 final noticesRepositoryProvider = Provider<NoticesRepository>(
   (ref) => NoticesRepositoryImpl(
     api: ref.watch(wyuNoticeApiProvider),
@@ -222,6 +234,14 @@ final noticesRepositoryProvider = Provider<NoticesRepository>(
 final graduateNoticesRepositoryProvider = Provider<GraduateNoticesRepository>(
   (ref) => GraduateNoticesRepositoryImpl(
     api: ref.watch(wyuGraduateNoticeApiProvider),
+    cacheStore: ref.watch(jsonCacheStoreProvider),
+    logger: ref.watch(appLoggerProvider),
+  ),
+);
+
+final schoolNewsRepositoryProvider = Provider<SchoolNewsRepository>(
+  (ref) => SchoolNewsRepositoryImpl(
+    api: ref.watch(wyuSchoolNewsApiProvider),
     cacheStore: ref.watch(jsonCacheStoreProvider),
     logger: ref.watch(appLoggerProvider),
   ),
@@ -325,6 +345,16 @@ final fetchGraduateNoticeDetailUseCaseProvider =
       (ref) => FetchGraduateNoticeDetailUseCase(
         ref.watch(graduateNoticesRepositoryProvider),
       ),
+    );
+
+final fetchSchoolNewsPageUseCaseProvider = Provider<FetchSchoolNewsPageUseCase>(
+  (ref) => FetchSchoolNewsPageUseCase(ref.watch(schoolNewsRepositoryProvider)),
+);
+
+final fetchSchoolNewsDetailUseCaseProvider =
+    Provider<FetchSchoolNewsDetailUseCase>(
+      (ref) =>
+          FetchSchoolNewsDetailUseCase(ref.watch(schoolNewsRepositoryProvider)),
     );
 
 final fetchAppointmentDetailUseCaseProvider =

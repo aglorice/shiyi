@@ -21,6 +21,9 @@ import '../../modules/notices/presentation/pages/notices_page.dart';
 import '../../modules/profile/presentation/pages/about_app_page.dart';
 import '../../modules/profile/presentation/pages/profile_page.dart';
 import '../../modules/schedule/presentation/pages/schedule_page.dart';
+import '../../modules/school_news/domain/entities/school_news.dart';
+import '../../modules/school_news/presentation/pages/school_news_detail_page.dart';
+import '../../modules/school_news/presentation/pages/school_news_page.dart';
 import '../../modules/services/domain/entities/service_card_data.dart';
 import '../../modules/services/presentation/pages/service_webview_page.dart';
 import '../../modules/services/presentation/pages/services_page.dart';
@@ -170,6 +173,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return NoticeDetailPage(item: item);
         },
       ),
+      GoRoute(
+        path: '/school-news',
+        builder: (context, state) => const SchoolNewsPage(),
+      ),
+      GoRoute(
+        path: '/school-news/detail',
+        builder: (context, state) {
+          final item = state.extra;
+          if (item is! SchoolNewsItem) {
+            return const Scaffold(body: Center(child: Text('要闻参数缺失')));
+          }
+          return SchoolNewsDetailPage(item: item);
+        },
+      ),
     ],
     redirect: (context, state) {
       final isLogin = state.matchedLocation == '/login';
@@ -177,12 +194,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isPublicNoticeRoute =
           state.matchedLocation == '/notices' ||
           state.matchedLocation == '/notices/detail';
+      final isPublicSchoolNewsRoute =
+          state.matchedLocation == '/school-news' ||
+          state.matchedLocation == '/school-news/detail';
 
       if (authAsync.isLoading) {
         return null;
       }
 
-      if (!isAuthenticated && !isLogin && !isPublicNoticeRoute) {
+      if (!isAuthenticated &&
+          !isLogin &&
+          !isPublicNoticeRoute &&
+          !isPublicSchoolNewsRoute) {
         return '/login';
       }
 

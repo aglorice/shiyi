@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -23,6 +24,14 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
     }
+
+    expect(find.text('学校要闻'), findsAtLeastNWidgets(1));
+    await tester.scrollUntilVisible(
+      find.text('常用入口'),
+      320,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
 
     expect(find.text('常用入口'), findsOneWidget);
     expect(find.text('总览'), findsAtLeastNWidgets(1));
