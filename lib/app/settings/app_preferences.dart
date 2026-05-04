@@ -72,6 +72,7 @@ class AppPreferences {
     this.showWeekends = true,
     this.scheduleWeekNumber,
     this.scheduleWeekSetDate,
+    this.selectedTermId,
     this.pixelPet,
     this.gymPhoneNumber,
     this.gymPreferredSportId,
@@ -94,6 +95,9 @@ class AppPreferences {
 
   /// The date (ISO 8601) when [scheduleWeekNumber] was set.
   final String? scheduleWeekSetDate;
+
+  /// The term ID the user last selected.
+  final String? selectedTermId;
 
   /// The pixel pet assigned to this user (random on first launch).
   final String? pixelPet;
@@ -134,6 +138,8 @@ class AppPreferences {
     bool? showWeekends,
     int? scheduleWeekNumber,
     String? scheduleWeekSetDate,
+    String? selectedTermId,
+    bool clearSelectedTermId = false,
     String? pixelPet,
     String? gymPhoneNumber,
     String? gymPreferredSportId,
@@ -156,6 +162,9 @@ class AppPreferences {
       showWeekends: showWeekends ?? this.showWeekends,
       scheduleWeekNumber: scheduleWeekNumber ?? this.scheduleWeekNumber,
       scheduleWeekSetDate: scheduleWeekSetDate ?? this.scheduleWeekSetDate,
+      selectedTermId: clearSelectedTermId
+          ? null
+          : (selectedTermId ?? this.selectedTermId),
       pixelPet: pixelPet ?? this.pixelPet,
       gymPhoneNumber: clearGymPhoneNumber
           ? null
@@ -187,6 +196,7 @@ class AppPreferences {
   static const _showWeekendsKey = 'app.schedule.showWeekends';
   static const _scheduleWeekNumberKey = 'app.schedule.weekNumber';
   static const _scheduleWeekSetDateKey = 'app.schedule.weekSetDate';
+  static const _selectedTermIdKey = 'app.schedule.selectedTermId';
   static const _pixelPetKey = 'app.ui.pixelPet';
   static const _gymPhoneNumberKey = 'app.gym.phoneNumber';
   static const _gymPreferredSportIdKey = 'app.gym.preferredSportId';
@@ -209,6 +219,7 @@ class AppPreferences {
       showWeekends: preferences.getBool(_showWeekendsKey) ?? true,
       scheduleWeekNumber: preferences.getInt(_scheduleWeekNumberKey),
       scheduleWeekSetDate: preferences.getString(_scheduleWeekSetDateKey),
+      selectedTermId: preferences.getString(_selectedTermIdKey),
       pixelPet: preferences.getString(_pixelPetKey),
       gymPhoneNumber: preferences.getString(_gymPhoneNumberKey),
       gymPreferredSportId: preferences.getString(_gymPreferredSportIdKey),
@@ -245,6 +256,11 @@ class AppPreferences {
       );
     } else {
       await preferences.remove(_scheduleWeekSetDateKey);
+    }
+    if (selectedTermId != null) {
+      await preferences.setString(_selectedTermIdKey, selectedTermId!);
+    } else {
+      await preferences.remove(_selectedTermIdKey);
     }
     if (pixelPet != null) {
       await preferences.setString(_pixelPetKey, pixelPet!);

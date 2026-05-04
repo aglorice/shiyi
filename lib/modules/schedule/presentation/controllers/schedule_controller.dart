@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/di/app_providers.dart';
+import '../../../../app/settings/app_preferences_controller.dart';
 import '../../../../core/error/error_display.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/models/data_origin.dart';
@@ -19,6 +20,11 @@ class ScheduleController extends AsyncNotifier<ScheduleSnapshot> {
 
   @override
   Future<ScheduleSnapshot> build() async {
+    // Restore persisted term selection.
+    final savedTermId = ref.read(appPreferencesControllerProvider).selectedTermId;
+    if (savedTermId != null && savedTermId.isNotEmpty) {
+      _selectedTermId = savedTermId;
+    }
     return _load(forceRefresh: false);
   }
 
@@ -38,6 +44,8 @@ class ScheduleController extends AsyncNotifier<ScheduleSnapshot> {
       return false;
     }
     state = newState;
+    // Persist the selected term.
+    ref.read(appPreferencesControllerProvider.notifier).setSelectedTermId(termId);
     return true;
   }
 
@@ -73,6 +81,13 @@ class ScheduleController extends AsyncNotifier<ScheduleSnapshot> {
 
     if (result case Success<ScheduleSnapshot>(data: final snapshot)) {
       _selectedTermId = snapshot.term.id;
+      // Auto-sync the week from the server so that the week can
+      // auto-advance even if the user never manually picked one.
+      if (snapshot.currentWeek != null) {
+        ref
+            .read(appPreferencesControllerProvider.notifier)
+            .syncScheduleWeekFromServer(snapshot.currentWeek!);
+      }
       return snapshot;
     }
 

@@ -69,6 +69,30 @@ class AppPreferencesController extends Notifier<AppPreferences> {
     );
   }
 
+  /// Auto-save the server-provided current week so that
+  /// [AppPreferences.computedScheduleWeek] can auto-advance weekly.
+  Future<void> syncScheduleWeekFromServer(int currentWeek) async {
+    final today = DateTime.now();
+    final dateStr =
+        '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+    // Only update if the week or date has actually changed.
+    if (state.scheduleWeekNumber == currentWeek &&
+        state.scheduleWeekSetDate == dateStr) {
+      return;
+    }
+    await _update(
+      state.copyWith(
+        scheduleWeekNumber: currentWeek,
+        scheduleWeekSetDate: dateStr,
+      ),
+    );
+  }
+
+  Future<void> setSelectedTermId(String termId) async {
+    if (state.selectedTermId == termId) return;
+    await _update(state.copyWith(selectedTermId: termId));
+  }
+
   Future<void> reset() async {
     await _update(const AppPreferences());
   }
