@@ -213,6 +213,7 @@ class ScheduleSnapshot {
     required this.fetchedAt,
     required this.origin,
     this.currentWeek,
+    this.loadError,
   });
 
   final Term term;
@@ -221,6 +222,12 @@ class ScheduleSnapshot {
   final List<Course> courses;
   final DateTime fetchedAt;
   final DataOrigin origin;
+
+  /// Non-null when the schedule data failed to load from both remote and
+  /// cache. The snapshot contains an empty course list so the UI can still
+  /// render the schedule shell (top bar, term picker, etc.) while showing
+  /// an error banner.
+  final String? loadError;
 
   bool get isCurrentTerm => currentWeek != null;
   int get displayWeek => currentWeek ?? fallbackCurrentWeek;
@@ -300,6 +307,8 @@ class ScheduleSnapshot {
     bool clearCurrentWeek = false,
     DateTime? fetchedAt,
     DataOrigin? origin,
+    String? loadError,
+    bool clearLoadError = false,
   }) {
     return ScheduleSnapshot(
       term: term ?? this.term,
@@ -308,6 +317,7 @@ class ScheduleSnapshot {
       courses: courses,
       fetchedAt: fetchedAt ?? this.fetchedAt,
       origin: origin ?? this.origin,
+      loadError: clearLoadError ? null : (loadError ?? this.loadError),
     );
   }
 
@@ -318,6 +328,7 @@ class ScheduleSnapshot {
     'courses': courses.map((course) => course.toJson()).toList(),
     'fetchedAt': fetchedAt.toIso8601String(),
     'origin': origin.name,
+    if (loadError != null) 'loadError': loadError,
   };
 
   factory ScheduleSnapshot.fromJson(Map<String, dynamic> json) {
@@ -332,6 +343,7 @@ class ScheduleSnapshot {
           .toList(),
       fetchedAt: DateTime.parse(json['fetchedAt'] as String),
       origin: DataOrigin.values.byName(json['origin'] as String),
+      loadError: json['loadError'] as String?,
     );
   }
 }

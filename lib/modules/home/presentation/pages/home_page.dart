@@ -1212,6 +1212,14 @@ class _HomeSyncState {
     AsyncValue<ScheduleSnapshot> scheduleAsync,
   ) {
     return switch (scheduleAsync) {
+      AsyncData(:final value) when value.loadError != null =>
+        const _HomeSyncState(
+          label: '教务数据暂不可用',
+          message: '不影响你进入成绩、考试和课表，必要时可以重新同步。',
+          icon: Icons.sync_problem_rounded,
+          color: Color(0xFFB96A1F),
+          showRetry: true,
+        ),
       AsyncData() => const _HomeSyncState(
         label: '教务数据已同步',
         message: '下拉首页可以重新同步，常用功能已经可以直接使用。',

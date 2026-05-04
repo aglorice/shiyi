@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/di/app_providers.dart';
+import '../../../../core/error/error_display.dart';
 import '../../../../core/error/failure.dart';
+import '../../../../core/models/data_origin.dart';
 import '../../../../core/result/result.dart';
 import '../../../auth/domain/entities/app_session.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
@@ -69,9 +71,27 @@ class ScheduleController extends AsyncNotifier<ScheduleSnapshot> {
       }
     }
 
-    final snapshot = result.requireValue();
-    _selectedTermId = snapshot.term.id;
-    return snapshot;
+    if (result case Success<ScheduleSnapshot>(data: final snapshot)) {
+      _selectedTermId = snapshot.term.id;
+      return snapshot;
+    }
+
+    // Remote failed and no cache available – return an empty snapshot so the
+    // UI can still render the schedule shell (top bar, term picker, etc.)
+    // instead of a full-page error.
+    final failure = result.failureOrNull!;
+    final errorMessage = formatError(failure).message;
+    final termId = _selectedTermId ?? '';
+    return ScheduleSnapshot(
+      term: Term(id: termId, name: '未知学期'),
+      availableTerms: termId.isNotEmpty
+          ? [Term(id: termId, name: '未知学期')]
+          : <Term>[],
+      courses: const [],
+      fetchedAt: DateTime.now(),
+      origin: DataOrigin.cache,
+      loadError: errorMessage,
+    );
   }
 
   Future<AppSession?> _refreshSessionForRetry(Failure triggerFailure) async {

@@ -70,6 +70,12 @@ class _SchedulePageState extends ConsumerState<SchedulePage> {
 
         return Column(
           children: [
+            if (snapshot.loadError != null)
+              _ScheduleErrorBanner(
+                message: snapshot.loadError!,
+                onRetry: () =>
+                    ref.read(scheduleControllerProvider.notifier).refresh(),
+              ),
             _ScheduleTopBar(
               snapshot: snapshot,
               weekLabel: weekFilterLabel,
@@ -392,6 +398,61 @@ class _SchedulePageState extends ConsumerState<SchedulePage> {
       isScrollControlled: true,
       builder: (context) =>
           _CourseDetailSheet(snapshot: snapshot, entry: entry),
+    );
+  }
+}
+
+class _ScheduleErrorBanner extends StatelessWidget {
+  const _ScheduleErrorBanner({
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: colorScheme.errorContainer,
+      child: Row(
+        children: [
+          Icon(
+            Icons.sync_problem_rounded,
+            size: 18,
+            color: colorScheme.onErrorContainer,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onErrorContainer,
+                fontWeight: FontWeight.w500,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: onRetry,
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              foregroundColor: colorScheme.onErrorContainer,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text('重试'),
+          ),
+        ],
+      ),
     );
   }
 }
