@@ -201,7 +201,11 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
       isCurrentTerm: _isSelectedTermCurrent(selectedTermMap),
       currentWeekSource: studentCardResult.dataOrNull,
     );
-    if (snapshot != null) {
+    if (snapshot.courses.isEmpty) {
+      _logger.info(
+        '[Gateway] 课表解析完成（课程为空） term=${snapshot.term.name}',
+      );
+    } else {
       _logger.info(
         '[Gateway] 课表解析完成 term=${snapshot.term.name} currentWeek=${snapshot.currentWeek} '
         'courseCount=${snapshot.courses.length} entryCount=${snapshot.entries.length}',
@@ -209,12 +213,8 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
       _logger.debug(
         '[Gateway] 课表样例=${snapshot.entries.take(5).map((item) => '${item.session.weekdayLabel} ${item.session.startTime}-${item.session.endTime} ${item.course.name}@${item.session.location.fullName}').join(' | ')}',
       );
-    } else {
-      _logger.warn('[Gateway] 课表解析结果为空');
     }
-    return snapshot == null
-        ? const FailureResult(ParsingFailure('课表数据解析失败。'))
-        : Success(snapshot);
+    return Success(snapshot);
   }
 
   @override
@@ -1405,23 +1405,11 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
       isCurrentTerm: selectedTerm.isSelected,
       currentWeekSource: null,
     );
-    if (snapshot != null) {
-      _logger.info(
-        '[Gateway] 本科课表解析完成 term=${snapshot.term.name} '
-        'courseCount=${snapshot.courses.length} entryCount=${snapshot.entries.length}',
-      );
-    }
-    return snapshot == null
-        ? Success(
-            ScheduleSnapshot(
-              term: selectedTerm,
-              availableTerms: availableTerms,
-              courses: const [],
-              fetchedAt: DateTime.now(),
-              origin: DataOrigin.remote,
-            ),
-          )
-        : Success(snapshot);
+    _logger.info(
+      '[Gateway] 本科课表解析完成 term=${snapshot.term.name} '
+      'courseCount=${snapshot.courses.length} entryCount=${snapshot.entries.length}',
+    );
+    return Success(snapshot);
   }
 
   Future<Result<GradesSnapshot>> _fetchUndergradGrades(
@@ -2404,7 +2392,7 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
   static const _serviceCardWid = '8558486040491173';
   static const _yjsServiceCardWid = '017434820995445355';
 
-  ScheduleSnapshot? _mapSchedule({
+  ScheduleSnapshot _mapSchedule({
     required dynamic raw,
     required String termId,
     required String termName,
@@ -2442,10 +2430,6 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
         courseCode: session.courseCode,
         note: session.note,
       );
-    }
-
-    if (grouped.isEmpty) {
-      return null;
     }
 
     final courses = grouped.entries.map((entry) {
