@@ -689,7 +689,6 @@ class _WeekTimetable extends StatelessWidget {
               color: colorScheme.outlineVariant.withValues(alpha: 0.76),
             ),
           ),
-          clipBehavior: Clip.antiAlias,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
