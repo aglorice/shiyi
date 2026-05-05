@@ -415,7 +415,7 @@ class AppPreferences {
   }
 
   static double _normalizeScheduleBackgroundOpacity(double value) {
-    return value.clamp(0.0, 0.5);
+    return value.clamp(0.0, 1.0);
   }
 
   static GymTimePreference? _gymTimePreferenceFromName(String? value) {
