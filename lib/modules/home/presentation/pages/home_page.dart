@@ -1662,14 +1662,14 @@ class _HomeSyncState {
     return switch (scheduleAsync) {
       AsyncData(:final value) when value.loadError != null =>
         const _HomeSyncState(
-          label: '教务数据暂不可用',
+          label: '数据暂不可用',
           message: '不影响你进入成绩、考试和课表，必要时可以重新同步。',
           icon: Icons.sync_problem_rounded,
           color: Color(0xFFB96A1F),
           showRetry: true,
         ),
       AsyncData() => const _HomeSyncState(
-        label: '教务数据已同步',
+        label: '数据已同步',
         message: '下拉首页可以重新同步，常用功能已经可以直接使用。',
         icon: Icons.check_circle_outline_rounded,
         color: Color(0xFF0F6A71),
@@ -1683,14 +1683,14 @@ class _HomeSyncState {
           isSessionExpired: true,
         ),
       AsyncError() => const _HomeSyncState(
-        label: '教务数据暂不可用',
+        label: '数据暂不可用',
         message: '不影响你进入成绩、考试和课表，必要时可以重新同步。',
         icon: Icons.sync_problem_rounded,
         color: Color(0xFFB96A1F),
         showRetry: true,
       ),
       _ => const _HomeSyncState(
-        label: '正在同步教务数据',
+        label: '正在同步数据',
         message: '首页不再展示复杂课程信息，同步完成后可直接进入课表。',
         icon: Icons.autorenew_rounded,
         color: Color(0xFF5478A7),
