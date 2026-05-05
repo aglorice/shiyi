@@ -59,13 +59,13 @@ class HomePage extends ConsumerWidget {
                   quoteAsync: hitokotoAsync,
                 ),
                 const SizedBox(height: 18),
+                _TodayCourseCard(scheduleAsync: scheduleAsync),
+                const SizedBox(height: 14),
                 _DesktopOverviewGrid(
-                  scheduleAsync: scheduleAsync,
+                  newsAsync: schoolNewsAsync,
                   electricityAsync: electricityAsync,
                   appointmentsAsync: appointmentsAsync,
                 ),
-                const SizedBox(height: 14),
-                _SchoolNewsOverviewCard(newsAsync: schoolNewsAsync),
                 const SizedBox(height: 24),
                 const _HomeQuickActionsSection(),
                 const SizedBox(height: 16),
@@ -84,12 +84,12 @@ class HomePage extends ConsumerWidget {
                   quoteAsync: hitokotoAsync,
                 ),
                 const SizedBox(height: 14),
+                _TodayCourseCard(scheduleAsync: scheduleAsync),
+                const SizedBox(height: 10),
                 _MobileOverviewGrid(
-                  scheduleAsync: scheduleAsync,
+                  newsAsync: schoolNewsAsync,
                   electricityAsync: electricityAsync,
                 ),
-                const SizedBox(height: 10),
-                _SchoolNewsOverviewCard(newsAsync: schoolNewsAsync),
                 const SizedBox(height: 10),
                 _GymAppointmentsPreviewCard(
                   appointmentsAsync: appointmentsAsync,
@@ -269,11 +269,11 @@ class _SchoolNewsOverviewCard extends StatelessWidget {
 
 class _MobileOverviewGrid extends StatelessWidget {
   const _MobileOverviewGrid({
-    required this.scheduleAsync,
+    required this.newsAsync,
     required this.electricityAsync,
   });
 
-  final AsyncValue<ScheduleSnapshot> scheduleAsync;
+  final AsyncValue<SchoolNewsFeedState> newsAsync;
   final AsyncValue<ElectricityDashboard> electricityAsync;
 
   @override
@@ -283,7 +283,7 @@ class _MobileOverviewGrid extends StatelessWidget {
         if (constraints.maxWidth < 340) {
           return Column(
             children: [
-              _TodayCourseCard(scheduleAsync: scheduleAsync),
+              _SchoolNewsOverviewCard(newsAsync: newsAsync),
               const SizedBox(height: 10),
               _ElectricityPreviewCard(electricityAsync: electricityAsync),
             ],
@@ -294,7 +294,7 @@ class _MobileOverviewGrid extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(child: _TodayCourseCard(scheduleAsync: scheduleAsync)),
+              Expanded(child: _SchoolNewsOverviewCard(newsAsync: newsAsync)),
               const SizedBox(width: 10),
               Expanded(
                 child: _ElectricityPreviewCard(
@@ -311,12 +311,12 @@ class _MobileOverviewGrid extends StatelessWidget {
 
 class _DesktopOverviewGrid extends StatelessWidget {
   const _DesktopOverviewGrid({
-    required this.scheduleAsync,
+    required this.newsAsync,
     required this.electricityAsync,
     required this.appointmentsAsync,
   });
 
-  final AsyncValue<ScheduleSnapshot> scheduleAsync;
+  final AsyncValue<SchoolNewsFeedState> newsAsync;
   final AsyncValue<ElectricityDashboard> electricityAsync;
   final AsyncValue<List<BookingRecord>> appointmentsAsync;
 
@@ -333,7 +333,7 @@ class _DesktopOverviewGrid extends StatelessWidget {
           children: [
             SizedBox(
               width: columnWidth,
-              child: _TodayCourseCard(scheduleAsync: scheduleAsync),
+              child: _SchoolNewsOverviewCard(newsAsync: newsAsync),
             ),
             SizedBox(
               width: columnWidth,
