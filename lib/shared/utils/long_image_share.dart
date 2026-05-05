@@ -110,7 +110,7 @@ class LongImageShare {
       ShareParams(
         title: title,
         text: text,
-        files: [XFile.fromData(bytes, mimeType: 'image/png')],
+        files: [XFile.fromData(bytes, name: fileName, mimeType: 'image/png')],
         fileNameOverrides: [fileName],
         sharePositionOrigin: sharePositionOrigin,
       ),
