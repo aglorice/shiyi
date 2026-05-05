@@ -38,7 +38,7 @@ class LongImageShare {
         return Positioned.fill(
           child: IgnorePointer(
             child: Opacity(
-              opacity: 0.001,
+              opacity: 0.004,
               child: Align(
                 alignment: Alignment.topLeft,
                 child: SizedBox(
