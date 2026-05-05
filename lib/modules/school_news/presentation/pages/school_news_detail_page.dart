@@ -578,7 +578,7 @@ class _SharePosterFooter extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Uni Yi · 五邑大学校园助手',
+                  '拾邑 · 五邑大学校园助手',
                   style: TextStyle(
                     color: Color(0xFF0F6A71),
                     fontWeight: FontWeight.w900,
