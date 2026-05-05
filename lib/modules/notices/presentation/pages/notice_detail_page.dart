@@ -610,7 +610,7 @@ class _NoticeSharePoster extends StatelessWidget {
     }..removeWhere((line) => line.isEmpty);
 
     return Container(
-      color: const Color(0xFFFFFCF6),
+      color: Theme.of(context).colorScheme.surface,
       padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
       child: DefaultTextStyle(
         style: const TextStyle(
@@ -835,7 +835,7 @@ class _SharePosterFooter extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Uni Yi · 五邑大学校园助手',
+                  '拾邑 · 五邑大学校园助手',
                   style: TextStyle(
                     color: Color(0xFF0F6A71),
                     fontWeight: FontWeight.w900,

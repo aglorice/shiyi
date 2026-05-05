@@ -387,7 +387,7 @@ class _SchoolNewsSharePoster extends StatelessWidget {
         : detail.metaLines;
 
     return Container(
-      color: const Color(0xFFFFFCF6),
+      color: Theme.of(context).colorScheme.surface,
       padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
       child: DefaultTextStyle(
         style: const TextStyle(
