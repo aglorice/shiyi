@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -5,6 +6,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -77,7 +79,7 @@ class LongImageShare {
 
     overlay.insert(entry);
     try {
-      await _waitForRender();
+      await _waitForPaint(boundaryKey);
       final boundary =
           boundaryKey.currentContext?.findRenderObject()
               as RenderRepaintBoundary?;
@@ -85,7 +87,7 @@ class LongImageShare {
         throw StateError('分享长图生成失败。');
       }
 
-      await _waitForRender();
+      await _ensurePainted(boundary);
       final maxSide = math.max(boundary.size.width, boundary.size.height);
       final limitedRatio = maxPixelDimension / maxSide;
       final pixelRatio = math.min(deviceRatio, limitedRatio).clamp(0.5, 3.0);
@@ -129,9 +131,31 @@ class LongImageShare {
         : null;
   }
 
-  static Future<void> _waitForRender() async {
-    await WidgetsBinding.instance.endOfFrame;
-    await Future<void>.delayed(const Duration(milliseconds: 32));
-    await WidgetsBinding.instance.endOfFrame;
+  /// Wait until the overlay entry has been built, laid out, and painted.
+  static Future<void> _waitForPaint(GlobalKey key) async {
+    // Give the overlay entry a chance to be built.
+    await _nextFrame;
+    await _nextFrame;
+    // Extra delay for paint to finish on slow devices.
+    await Future<void>.delayed(const Duration(milliseconds: 64));
+    await _nextFrame;
+  }
+
+  /// Ensure a [RenderRepaintBoundary] has been painted before calling toImage.
+  static Future<void> _ensurePainted(RenderRepaintBoundary boundary) async {
+    // Keep waiting until the boundary no longer needs paint.
+    for (var i = 0; i < 8; i++) {
+      if (!boundary.debugNeedsPaint) return;
+      await _nextFrame;
+    }
+  }
+
+  static Future<void> get _nextFrame {
+    final completer = Completer<void>();
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      completer.complete();
+    });
+    SchedulerBinding.instance.scheduleFrame();
+    return completer.future;
   }
 }
