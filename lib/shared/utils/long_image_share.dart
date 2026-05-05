@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
@@ -129,19 +129,25 @@ class LongImageShare {
 
   /// Wait until the overlay entry has been built, laid out, and painted.
   static Future<void> _waitForPaint(GlobalKey key) async {
-    // Give the overlay entry a chance to be built.
+    // Give the overlay entry a chance to be built and laid out.
     await _nextFrame;
     await _nextFrame;
     // Extra delay for paint to finish on slow devices.
-    await Future<void>.delayed(const Duration(milliseconds: 64));
+    await Future<void>.delayed(const Duration(milliseconds: 80));
     await _nextFrame;
   }
 
   /// Ensure a [RenderRepaintBoundary] has been painted before calling toImage.
   static Future<void> _ensurePainted(RenderRepaintBoundary boundary) async {
-    // Keep waiting until the boundary no longer needs paint.
-    for (var i = 0; i < 8; i++) {
-      if (!boundary.debugNeedsPaint) return;
+    // debugNeedsPaint is always false in release mode, so we must wait
+    // a fixed number of frames regardless.
+    if (kDebugMode) {
+      for (var i = 0; i < 8; i++) {
+        if (!boundary.debugNeedsPaint) return;
+        await _nextFrame;
+      }
+    } else {
+      await _nextFrame;
       await _nextFrame;
     }
   }
