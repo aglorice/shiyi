@@ -683,10 +683,6 @@ class _WeekTimetable extends StatelessWidget {
         };
 
         return Container(
-          decoration: BoxDecoration(
-            color: colorScheme.surface.withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(16),
-          ),
           foregroundDecoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
