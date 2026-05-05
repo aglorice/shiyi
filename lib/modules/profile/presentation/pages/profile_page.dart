@@ -224,7 +224,7 @@ class ProfilePage extends ConsumerWidget {
               Slider(
                 value: preferences.scheduleBackgroundOpacity,
                 min: 0,
-                max: 0.5,
+                max: 1,
                 divisions: 10,
                 label:
                     '${(preferences.scheduleBackgroundOpacity * 100).round()}%',
