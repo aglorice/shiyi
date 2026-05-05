@@ -15,6 +15,7 @@ import '../../integrations/campus_notices/wyu_notice_api.dart';
 import '../../integrations/electricity_recharge/wyu_electricity_api.dart';
 import '../../integrations/electricity_recharge/wyu_electricity_parser.dart';
 import '../../integrations/graduate_notices/wyu_graduate_notice_api.dart';
+import '../../integrations/hitokoto/hitokoto_api.dart';
 import '../../integrations/school_news/wyu_school_news_api.dart';
 import '../../integrations/school_portal/school_portal_gateway.dart';
 import '../../integrations/school_portal/sso/credential_transformer.dart';
@@ -88,6 +89,13 @@ final fileSaveServiceProvider = Provider<FileSaveService>(
 
 final gitHubReleaseApiProvider = Provider<GitHubReleaseApi>(
   (ref) => GitHubReleaseApi(logger: ref.watch(appLoggerProvider)),
+);
+
+final hitokotoApiProvider = Provider<HitokotoApi>(
+  (ref) => HitokotoApi(
+    logger: ref.watch(appLoggerProvider),
+    userAgent: ref.watch(userAgentPoolProvider).get(),
+  ),
 );
 
 final jsonCacheStoreProvider = Provider<JsonCacheStore>(

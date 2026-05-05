@@ -8,34 +8,64 @@ import '../../../../app/di/app_providers.dart';
 import '../../../../core/error/error_display.dart';
 import '../../../../core/platform/file_save_service.dart';
 import '../../../../core/result/result.dart';
+import '../../../../shared/utils/long_image_share.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/app_snackbar.dart';
 import '../../../../shared/widgets/constrained_body.dart';
 import '../../domain/entities/campus_notice.dart';
 import '../controllers/notice_detail_controller.dart';
 
-class NoticeDetailPage extends ConsumerWidget {
+class NoticeDetailPage extends ConsumerStatefulWidget {
   const NoticeDetailPage({super.key, required this.item});
 
   final CampusNoticeItem item;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final detailAsync = ref.watch(noticeDetailProvider(item));
+  ConsumerState<NoticeDetailPage> createState() => _NoticeDetailPageState();
+}
+
+class _NoticeDetailPageState extends ConsumerState<NoticeDetailPage> {
+  bool _sharing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final detailAsync = ref.watch(noticeDetailProvider(widget.item));
+    final detailForShare = switch (detailAsync) {
+      AsyncData(:final value) => value,
+      _ => null,
+    };
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(item.categoryLabel ?? item.category.defaultLabel),
+        title: Text(
+          widget.item.categoryLabel ?? widget.item.category.defaultLabel,
+        ),
+        actions: [
+          if (detailForShare != null)
+            IconButton(
+              tooltip: '长图分享',
+              onPressed: _sharing
+                  ? null
+                  : () => _shareDetail(context, detailForShare),
+              icon: _sharing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.ios_share_rounded),
+            ),
+        ],
       ),
       body: ConstrainedBody(
         child: AsyncValueView(
           value: detailAsync,
-          onRetry: () => ref.invalidate(noticeDetailProvider(item)),
+          onRetry: () => ref.invalidate(noticeDetailProvider(widget.item)),
           loadingLabel: '加载中',
           dataBuilder: (detail) => RefreshIndicator(
             onRefresh: () async {
-              ref.invalidate(noticeDetailProvider(item));
-              await ref.read(noticeDetailProvider(item).future);
+              ref.invalidate(noticeDetailProvider(widget.item));
+              await ref.read(noticeDetailProvider(widget.item).future);
             },
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -93,6 +123,80 @@ class NoticeDetailPage extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _shareDetail(
+    BuildContext buttonContext,
+    CampusNoticeDetail detail,
+  ) async {
+    setState(() => _sharing = true);
+    final sharePositionOrigin = LongImageShare.shareOriginFor(buttonContext);
+    AppSnackBar.show(
+      context,
+      message: '正在生成分享长图...',
+      tone: AppSnackBarTone.info,
+      icon: Icons.auto_awesome_rounded,
+      duration: const Duration(seconds: 3),
+    );
+
+    try {
+      final images = await _loadShareImages(detail);
+      if (!mounted) return;
+      for (final bytes in images.values) {
+        await precacheImage(MemoryImage(bytes), context);
+      }
+      if (!mounted) return;
+
+      final bytes = await LongImageShare.capturePng(
+        context: context,
+        child: _NoticeSharePoster(detail: detail, images: images),
+      );
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      await LongImageShare.sharePng(
+        bytes: bytes,
+        fileName: _shareFileName('通知', detail.title),
+        title: detail.title,
+        text: '${detail.title}\n${detail.item.detailUrl}',
+        sharePositionOrigin: sharePositionOrigin,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      AppSnackBar.show(
+        context,
+        message: '长图分享失败：${formatError(error).message}',
+        tone: AppSnackBarTone.error,
+        icon: Icons.error_outline_rounded,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _sharing = false);
+      }
+    }
+  }
+
+  Future<Map<String, Uint8List>> _loadShareImages(
+    CampusNoticeDetail detail,
+  ) async {
+    final images = <String, Uint8List>{};
+    for (final block in detail.contentBlocks) {
+      if (block is! NoticeImageBlock || block.url.trim().isEmpty) {
+        continue;
+      }
+      try {
+        images[block.url] = await ref.read(
+          noticeImageBytesProvider((
+            source: detail.item.category.board,
+            url: block.url,
+            referer: detail.item.detailUrl,
+          )).future,
+        );
+      } catch (_) {
+        continue;
+      }
+    }
+    return images;
   }
 }
 
@@ -484,6 +588,290 @@ class _NoticeImagePreviewPage extends ConsumerWidget {
 }
 
 enum _ImageSaveAction { saveAs }
+
+class _NoticeSharePoster extends StatelessWidget {
+  const _NoticeSharePoster({required this.detail, required this.images});
+
+  final CampusNoticeDetail detail;
+  final Map<String, Uint8List> images;
+
+  @override
+  Widget build(BuildContext context) {
+    final categoryLabel =
+        detail.item.categoryLabel ?? detail.item.category.defaultLabel;
+    final dateLabel = DateFormat(
+      'yyyy-MM-dd',
+      'zh_CN',
+    ).format(detail.item.publishedAt);
+    final metaLines = <String>{
+      dateLabel,
+      if (detail.source != null && detail.source!.trim().isNotEmpty)
+        detail.source!.trim(),
+      for (final line in detail.metaLines) line.trim(),
+    }..removeWhere((line) => line.isEmpty);
+
+    return Container(
+      color: const Color(0xFFFFFCF6),
+      padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
+      child: DefaultTextStyle(
+        style: const TextStyle(
+          color: Color(0xFF213A3C),
+          fontSize: 15,
+          height: 1.72,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFB97834).withValues(alpha: 0.11),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.campaign_rounded,
+                    color: Color(0xFFB97834),
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    categoryLabel,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFFB97834),
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 22),
+            Text(
+              detail.title,
+              style: const TextStyle(
+                color: Color(0xFF142C2F),
+                fontSize: 24,
+                height: 1.28,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: [for (final line in metaLines) _ShareMetaChip(line)],
+            ),
+            const SizedBox(height: 18),
+            Container(
+              height: 1,
+              color: const Color(0xFFB97834).withValues(alpha: 0.18),
+            ),
+            const SizedBox(height: 18),
+            for (final block in detail.contentBlocks)
+              switch (block) {
+                NoticeTextBlock(:final text) => Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: Text(text),
+                ),
+                NoticeImageBlock(:final url) => Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: _ShareImageBlock(
+                    bytes: images[url],
+                    failureLabel: '图片未能加载',
+                  ),
+                ),
+              },
+            if (detail.attachments.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              const Text(
+                '附件',
+                style: TextStyle(
+                  color: Color(0xFF142C2F),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  height: 1.2,
+                ),
+              ),
+              const SizedBox(height: 10),
+              for (final attachment in detail.attachments)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _ShareAttachmentRow(attachment: attachment),
+                ),
+            ],
+            const SizedBox(height: 8),
+            _SharePosterFooter(sourceUrl: detail.item.detailUrl),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ShareMetaChip extends StatelessWidget {
+  const _ShareMetaChip(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFB97834).withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFF9D622B),
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          height: 1.1,
+        ),
+      ),
+    );
+  }
+}
+
+class _ShareImageBlock extends StatelessWidget {
+  const _ShareImageBlock({required this.bytes, required this.failureLabel});
+
+  final Uint8List? bytes;
+  final String failureLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = bytes;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: data == null
+          ? Container(
+              height: 92,
+              alignment: Alignment.center,
+              color: const Color(0xFFF5EFE5),
+              child: Text(
+                failureLabel,
+                style: const TextStyle(
+                  color: Color(0xFF607172),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            )
+          : Image.memory(data, fit: BoxFit.fitWidth),
+    );
+  }
+}
+
+class _ShareAttachmentRow extends StatelessWidget {
+  const _ShareAttachmentRow({required this.attachment});
+
+  final CampusNoticeAttachment attachment;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFB97834).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.attach_file_rounded,
+            color: Color(0xFFB97834),
+            size: 17,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              attachment.title,
+              style: const TextStyle(
+                color: Color(0xFF213A3C),
+                fontSize: 13,
+                height: 1.35,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SharePosterFooter extends StatelessWidget {
+  const _SharePosterFooter({required this.sourceUrl});
+
+  final String sourceUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F6A71).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.auto_awesome_rounded,
+            color: Color(0xFF0F6A71),
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Uni Yi · 五邑大学校园助手',
+                  style: TextStyle(
+                    color: Color(0xFF0F6A71),
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  sourceUrl,
+                  style: const TextStyle(
+                    color: Color(0xFF607172),
+                    fontSize: 10,
+                    height: 1.32,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _shareFileName(String prefix, String title) {
+  final safeTitle = title
+      .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  final clipped = safeTitle.length > 28
+      ? safeTitle.substring(0, 28)
+      : safeTitle;
+  return '${prefix}_${clipped.isEmpty ? '详情' : clipped}.png';
+}
 
 class _MetaRow extends StatelessWidget {
   const _MetaRow({required this.detail});

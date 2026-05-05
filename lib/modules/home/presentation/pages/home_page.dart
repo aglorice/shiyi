@@ -1,15 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../app/layout/breakpoints.dart';
+import '../../../../app/settings/app_preferences_controller.dart';
 import '../../../../core/error/error_display.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../shared/widgets/pixel_pet.dart';
 import '../../../../shared/widgets/session_expired_dialog.dart';
 import '../../../../shared/widgets/surface_card.dart';
-import '../../../../app/settings/app_preferences_controller.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../electricity/domain/entities/electricity_dashboard.dart';
 import '../../../electricity/presentation/controllers/electricity_controller.dart';
@@ -20,6 +22,8 @@ import '../../../schedule/domain/entities/schedule_snapshot.dart';
 import '../../../schedule/presentation/controllers/schedule_controller.dart';
 import '../../../school_news/presentation/controllers/school_news_controller.dart';
 import '../../../school_news/presentation/models/school_news_feed_state.dart';
+import '../../domain/entities/hitokoto_quote.dart';
+import '../controllers/hitokoto_controller.dart';
 
 class HomePage extends ConsumerWidget {
   const HomePage({super.key});
@@ -31,6 +35,7 @@ class HomePage extends ConsumerWidget {
     final electricityAsync = ref.watch(electricityControllerProvider);
     final appointmentsAsync = ref.watch(myGymAppointmentsProvider);
     final schoolNewsAsync = ref.watch(schoolNewsControllerProvider);
+    final hitokotoAsync = ref.watch(hitokotoControllerProvider);
     final syncState = _HomeSyncState.fromAsyncValue(scheduleAsync);
     final preferences = ref.watch(appPreferencesControllerProvider);
     final petType = PixelPetType.fromName(preferences.pixelPet);
@@ -51,6 +56,7 @@ class HomePage extends ConsumerWidget {
                   dateLabel: dateStr,
                   syncState: syncState,
                   petType: petType,
+                  quoteAsync: hitokotoAsync,
                 ),
                 const SizedBox(height: 18),
                 _SchoolNewsOverviewCard(newsAsync: schoolNewsAsync),
@@ -75,13 +81,15 @@ class HomePage extends ConsumerWidget {
                   dateLabel: dateStr,
                   syncState: syncState,
                   petType: petType,
+                  quoteAsync: hitokotoAsync,
                 ),
                 const SizedBox(height: 14),
                 _SchoolNewsOverviewCard(newsAsync: schoolNewsAsync),
                 const SizedBox(height: 10),
-                _TodayCourseCard(scheduleAsync: scheduleAsync),
-                const SizedBox(height: 10),
-                _ElectricityPreviewCard(electricityAsync: electricityAsync),
+                _MobileOverviewGrid(
+                  scheduleAsync: scheduleAsync,
+                  electricityAsync: electricityAsync,
+                ),
                 const SizedBox(height: 10),
                 _GymAppointmentsPreviewCard(
                   appointmentsAsync: appointmentsAsync,
@@ -103,6 +111,7 @@ class HomePage extends ConsumerWidget {
               ref.read(electricityControllerProvider.notifier).refresh(),
               ref.read(myGymAppointmentsProvider.notifier).refresh(),
               ref.read(schoolNewsControllerProvider.notifier).refresh(),
+              ref.read(hitokotoControllerProvider.notifier).refresh(),
             ]);
           },
           child: ListView(
@@ -258,6 +267,48 @@ class _SchoolNewsOverviewCard extends StatelessWidget {
   }
 }
 
+class _MobileOverviewGrid extends StatelessWidget {
+  const _MobileOverviewGrid({
+    required this.scheduleAsync,
+    required this.electricityAsync,
+  });
+
+  final AsyncValue<ScheduleSnapshot> scheduleAsync;
+  final AsyncValue<ElectricityDashboard> electricityAsync;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 340) {
+          return Column(
+            children: [
+              _TodayCourseCard(scheduleAsync: scheduleAsync),
+              const SizedBox(height: 10),
+              _ElectricityPreviewCard(electricityAsync: electricityAsync),
+            ],
+          );
+        }
+
+        return IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: _TodayCourseCard(scheduleAsync: scheduleAsync)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _ElectricityPreviewCard(
+                  electricityAsync: electricityAsync,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _DesktopOverviewGrid extends StatelessWidget {
   const _DesktopOverviewGrid({
     required this.scheduleAsync,
@@ -309,12 +360,14 @@ class _HomeHero extends StatelessWidget {
     required this.dateLabel,
     required this.syncState,
     required this.petType,
+    required this.quoteAsync,
   });
 
   final String displayName;
   final String dateLabel;
   final _HomeSyncState syncState;
   final PixelPetType petType;
+  final AsyncValue<HitokotoQuote> quoteAsync;
 
   @override
   Widget build(BuildContext context) {
@@ -386,9 +439,382 @@ class _HomeHero extends StatelessWidget {
                 ],
               ),
             ),
-            PixelPet(type: petType),
+            _HeroPetQuote(type: petType, quoteAsync: quoteAsync),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _HeroPetQuote extends ConsumerWidget {
+  const _HeroPetQuote({required this.type, required this.quoteAsync});
+
+  final PixelPetType type;
+  final AsyncValue<HitokotoQuote> quoteAsync;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final quote = quoteAsync.asData?.value;
+    final hasQuote = quote != null && quote.text.trim().isNotEmpty;
+    final width = MediaQuery.sizeOf(context).width;
+
+    return SizedBox(
+      width: width >= AppBreakpoints.desktop ? 220 : 180,
+      height: hasQuote ? 94 : 76,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(right: 0, bottom: 0, child: _EasterEggPet(type: type)),
+          if (hasQuote)
+            Positioned(
+              right: 54,
+              top: 0,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () =>
+                    ref.read(hitokotoControllerProvider.notifier).refresh(),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: _HitokotoBubble(
+                    key: ValueKey(quote.uuid ?? quote.text),
+                    text: quote.text,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HitokotoBubble extends StatelessWidget {
+  const _HitokotoBubble({super.key, required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          constraints: const BoxConstraints(minWidth: 90, maxWidth: 120),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.65)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 14,
+                offset: const Offset(0, 7),
+              ),
+            ],
+          ),
+          child: Text(
+            text,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: const Color(0xFF274245),
+              fontSize: 10.5,
+              height: 1.3,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        Positioned(
+          right: 14,
+          bottom: -4,
+          child: Transform.rotate(
+            angle: 0.75,
+            child: Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.92),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EasterEggPet extends StatefulWidget {
+  const _EasterEggPet({required this.type});
+
+  final PixelPetType type;
+
+  @override
+  State<_EasterEggPet> createState() => _EasterEggPetState();
+}
+
+class _EasterEggPetState extends State<_EasterEggPet> {
+  static const _messages = [
+    '今天的小纸条：把最难的事拆成一小块就好。',
+    '课间风路过时，记得给自己留三分钟空白。',
+    '今日幸运色：晴空蓝，适合开始一件拖了很久的小事。',
+    '你发现了藏起来的便签，奖励自己慢一点也可以。',
+    '今日隐藏任务：认真吃一顿饭，别让忙碌偷走晚餐。',
+  ];
+
+  int _tapCount = 0;
+  Timer? _tapResetTimer;
+  OverlayEntry? _overlayEntry;
+
+  @override
+  void dispose() {
+    _tapResetTimer?.cancel();
+    final entry = _overlayEntry;
+    _overlayEntry = null;
+    entry?.remove();
+    super.dispose();
+  }
+
+  void _handleTap() {
+    _tapResetTimer?.cancel();
+    _tapCount += 1;
+    if (_tapCount >= 6) {
+      _tapCount = 0;
+      _showEasterEgg();
+      return;
+    }
+    _tapResetTimer = Timer(const Duration(milliseconds: 1600), () {
+      _tapCount = 0;
+    });
+  }
+
+  void _showEasterEgg() {
+    final overlay = Overlay.of(context, rootOverlay: true);
+    final previousEntry = _overlayEntry;
+    _overlayEntry = null;
+    previousEntry?.remove();
+    final message =
+        _messages[DateTime.now().millisecondsSinceEpoch % _messages.length];
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (context) => _HomeEasterEggToast(
+        type: widget.type,
+        message: message,
+        onDismissed: () {
+          if (_overlayEntry == entry) {
+            _overlayEntry = null;
+            entry.remove();
+          }
+        },
+      ),
+    );
+    _overlayEntry = entry;
+    overlay.insert(entry);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _handleTap,
+      onLongPress: _showEasterEgg,
+      child: PixelPet(type: widget.type),
+    );
+  }
+}
+
+class _HomeEasterEggToast extends StatefulWidget {
+  const _HomeEasterEggToast({
+    required this.type,
+    required this.message,
+    required this.onDismissed,
+  });
+
+  final PixelPetType type;
+  final String message;
+  final VoidCallback onDismissed;
+
+  @override
+  State<_HomeEasterEggToast> createState() => _HomeEasterEggToastState();
+}
+
+class _HomeEasterEggToastState extends State<_HomeEasterEggToast>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  Timer? _dismissTimer;
+  bool _dismissed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 380),
+      reverseDuration: const Duration(milliseconds: 240),
+    )..forward();
+    _dismissTimer = Timer(const Duration(milliseconds: 3600), _dismiss);
+  }
+
+  @override
+  void dispose() {
+    _dismissTimer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _dismiss() async {
+    if (_dismissed) return;
+    _dismissed = true;
+    await _controller.reverse();
+    widget.onDismissed();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final top = MediaQuery.viewPaddingOf(context).top + 18;
+
+    return Positioned(
+      left: 18,
+      right: 18,
+      top: top,
+      child: IgnorePointer(
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            final value = Curves.easeOutCubic.transform(_controller.value);
+            return Opacity(
+              opacity: value,
+              child: Transform.translate(
+                offset: Offset(0, -18 + 18 * value),
+                child: child,
+              ),
+            );
+          },
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    colorScheme.surface,
+                    Color.lerp(
+                          colorScheme.surface,
+                          colorScheme.tertiaryContainer,
+                          0.45,
+                        ) ??
+                        colorScheme.surface,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: colorScheme.primary.withValues(alpha: 0.18),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: colorScheme.shadow.withValues(alpha: 0.14),
+                    blurRadius: 28,
+                    offset: const Offset(0, 14),
+                  ),
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                children: [
+                  const _EasterEggParticles(),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 14, 16, 14),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        SizedBox.square(
+                          dimension: 46,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: colorScheme.primary.withValues(
+                                alpha: 0.12,
+                              ),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Center(
+                              child: Transform.scale(
+                                scale: 0.64,
+                                child: PixelPet(type: widget.type),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '隐藏小纸条',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                widget.message,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                  height: 1.42,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EasterEggParticles extends StatelessWidget {
+  const _EasterEggParticles();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final colors = [
+      colorScheme.primary,
+      const Color(0xFFE07A8A),
+      const Color(0xFFB97834),
+      const Color(0xFF2F8C72),
+    ];
+
+    return Positioned.fill(
+      child: Stack(
+        children: [
+          for (var i = 0; i < 9; i++)
+            Positioned(
+              left: 18.0 + i * 39,
+              top: i.isEven ? 9 : 56,
+              child: Icon(
+                i % 3 == 0
+                    ? Icons.auto_awesome_rounded
+                    : Icons.favorite_rounded,
+                size: i.isEven ? 10 : 8,
+                color: colors[i % colors.length].withValues(alpha: 0.18),
+              ),
+            ),
+        ],
       ),
     );
   }

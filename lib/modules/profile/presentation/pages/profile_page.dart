@@ -10,6 +10,7 @@ import '../../../../core/error/error_display.dart';
 import '../../../../core/platform/app_installer_service.dart';
 import '../../../../core/result/result.dart';
 import '../../../../shared/widgets/app_snackbar.dart';
+import '../../../../shared/widgets/schedule_background.dart';
 import '../../../../shared/widgets/surface_card.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../controllers/app_update_controller.dart';
@@ -71,7 +72,7 @@ class ProfilePage extends ConsumerWidget {
         ),
         const SizedBox(height: 16),
         _SettingsSection(
-          title: '外观主题',
+          title: '界面外观',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -89,6 +90,14 @@ class ProfilePage extends ConsumerWidget {
                 subtitle: '让文字和边界更清楚',
                 value: preferences.highContrast,
                 onChanged: controller.setHighContrast,
+              ),
+              const SizedBox(height: 8),
+              _SettingSwitchTile(
+                icon: Icons.view_compact_alt_outlined,
+                title: '紧凑布局',
+                subtitle: '让页面更利落，信息密度更高',
+                value: preferences.compactMode,
+                onChanged: controller.setCompactMode,
               ),
               const SizedBox(height: 20),
               Text(
@@ -169,23 +178,9 @@ class ProfilePage extends ConsumerWidget {
         ),
         const SizedBox(height: 16),
         _SettingsSection(
-          title: '首页布局',
+          title: '课表个性化',
           child: Column(
-            children: [
-              _SettingSwitchTile(
-                icon: Icons.view_compact_alt_outlined,
-                title: '紧凑布局',
-                subtitle: '让页面更利落，信息密度更高',
-                value: preferences.compactMode,
-                onChanged: controller.setCompactMode,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        _SettingsSection(
-          title: '课表显示',
-          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _SettingSwitchTile(
                 icon: Icons.view_week_outlined,
@@ -193,6 +188,47 @@ class ProfilePage extends ConsumerWidget {
                 subtitle: '关闭后整周课表只显示周一到周五',
                 value: preferences.showWeekends,
                 onChanged: controller.setShowWeekends,
+              ),
+              const SizedBox(height: 20),
+              Text(
+                '背景样式',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 10),
+              _ScheduleBackgroundPresetGrid(
+                selected: preferences.scheduleBackgroundStyle,
+                opacity: preferences.scheduleBackgroundOpacity,
+                onSelected: controller.setScheduleBackgroundStyle,
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Text(
+                    '背景强度',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${(preferences.scheduleBackgroundOpacity * 100).round()}%',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+              Slider(
+                value: preferences.scheduleBackgroundOpacity,
+                min: 0,
+                max: 0.5,
+                divisions: 10,
+                label:
+                    '${(preferences.scheduleBackgroundOpacity * 100).round()}%',
+                onChanged: controller.setScheduleBackgroundOpacity,
               ),
             ],
           ),
@@ -207,7 +243,7 @@ class ProfilePage extends ConsumerWidget {
                 title: '重置外观偏好',
                 subtitle: '恢复默认主题、字号和布局设置',
                 onTap: () async {
-                  await controller.reset();
+                  await controller.resetAppearance();
                   if (context.mounted) {
                     AppSnackBar.show(
                       context,
@@ -407,6 +443,154 @@ class _ThemePresetTile extends StatelessWidget {
                 color: selected
                     ? colorScheme.primary
                     : colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ScheduleBackgroundPresetGrid extends StatelessWidget {
+  const _ScheduleBackgroundPresetGrid({
+    required this.selected,
+    required this.opacity,
+    required this.onSelected,
+  });
+
+  final ScheduleBackgroundStyle selected;
+  final double opacity;
+  final ValueChanged<ScheduleBackgroundStyle> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final useTwoColumns = constraints.maxWidth >= 360;
+        final itemWidth = useTwoColumns
+            ? (constraints.maxWidth - 10) / 2
+            : constraints.maxWidth;
+
+        return Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (final style in ScheduleBackgroundStyle.values)
+              SizedBox(
+                width: itemWidth,
+                child: _ScheduleBackgroundPresetTile(
+                  style: style,
+                  selected: selected == style,
+                  opacity: opacity,
+                  onTap: () => onSelected(style),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ScheduleBackgroundPresetTile extends StatelessWidget {
+  const _ScheduleBackgroundPresetTile({
+    required this.style,
+    required this.selected,
+    required this.opacity,
+    required this.onTap,
+  });
+
+  final ScheduleBackgroundStyle style;
+  final bool selected;
+  final double opacity;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: selected
+          ? colorScheme.primaryContainer.withValues(alpha: 0.72)
+          : colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 46,
+                height: 46,
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: colorScheme.surface,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: colorScheme.outlineVariant),
+                        ),
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: ScheduleBackground(
+                        style: style,
+                        opacity: style == ScheduleBackgroundStyle.clean
+                            ? 0
+                            : opacity.clamp(0.22, 0.42).toDouble(),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    Center(
+                      child: Icon(
+                        style.icon,
+                        color: style.accentColor,
+                        size: 20,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      style.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      style.description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        height: 1.32,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(
+                selected
+                    ? Icons.check_circle_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                color: selected
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant.withValues(alpha: 0.68),
+                size: 19,
               ),
             ],
           ),

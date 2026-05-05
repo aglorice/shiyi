@@ -4,30 +4,63 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/error/error_display.dart';
+import '../../../../shared/utils/long_image_share.dart';
 import '../../../../shared/widgets/async_value_view.dart';
+import '../../../../shared/widgets/app_snackbar.dart';
 import '../../domain/entities/school_news.dart';
 import '../controllers/school_news_detail_controller.dart';
 
-class SchoolNewsDetailPage extends ConsumerWidget {
+class SchoolNewsDetailPage extends ConsumerStatefulWidget {
   const SchoolNewsDetailPage({super.key, required this.item});
 
   final SchoolNewsItem item;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final detailAsync = ref.watch(schoolNewsDetailProvider(item));
+  ConsumerState<SchoolNewsDetailPage> createState() =>
+      _SchoolNewsDetailPageState();
+}
+
+class _SchoolNewsDetailPageState extends ConsumerState<SchoolNewsDetailPage> {
+  bool _sharing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final detailAsync = ref.watch(schoolNewsDetailProvider(widget.item));
+    final detailForShare = switch (detailAsync) {
+      AsyncData(:final value) => value,
+      _ => null,
+    };
 
     return Scaffold(
-      appBar: AppBar(title: const Text('学校要闻')),
+      appBar: AppBar(
+        title: const Text('学校要闻'),
+        actions: [
+          if (detailForShare != null)
+            IconButton(
+              tooltip: '长图分享',
+              onPressed: _sharing
+                  ? null
+                  : () => _shareDetail(context, detailForShare),
+              icon: _sharing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.ios_share_rounded),
+            ),
+        ],
+      ),
       body: AsyncValueView(
         value: detailAsync,
-        onRetry: () => ref.invalidate(schoolNewsDetailProvider(item)),
+        onRetry: () => ref.invalidate(schoolNewsDetailProvider(widget.item)),
         loadingLabel: '正文加载中',
         dataBuilder: (detail) {
           return RefreshIndicator(
             onRefresh: () async {
-              ref.invalidate(schoolNewsDetailProvider(item));
-              await ref.read(schoolNewsDetailProvider(item).future);
+              ref.invalidate(schoolNewsDetailProvider(widget.item));
+              await ref.read(schoolNewsDetailProvider(widget.item).future);
             },
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -70,6 +103,79 @@ class SchoolNewsDetailPage extends ConsumerWidget {
         },
       ),
     );
+  }
+
+  Future<void> _shareDetail(
+    BuildContext buttonContext,
+    SchoolNewsDetail detail,
+  ) async {
+    setState(() => _sharing = true);
+    final sharePositionOrigin = LongImageShare.shareOriginFor(buttonContext);
+    AppSnackBar.show(
+      context,
+      message: '正在生成分享长图...',
+      tone: AppSnackBarTone.info,
+      icon: Icons.auto_awesome_rounded,
+      duration: const Duration(seconds: 3),
+    );
+
+    try {
+      final images = await _loadShareImages(detail);
+      if (!mounted) return;
+      for (final bytes in images.values) {
+        await precacheImage(MemoryImage(bytes), context);
+      }
+      if (!mounted) return;
+
+      final bytes = await LongImageShare.capturePng(
+        context: context,
+        child: _SchoolNewsSharePoster(detail: detail, images: images),
+      );
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      await LongImageShare.sharePng(
+        bytes: bytes,
+        fileName: _shareFileName('学校要闻', detail.title),
+        title: detail.title,
+        text: '${detail.title}\n${detail.item.detailUrl}',
+        sharePositionOrigin: sharePositionOrigin,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      AppSnackBar.show(
+        context,
+        message: '长图分享失败：${formatError(error).message}',
+        tone: AppSnackBarTone.error,
+        icon: Icons.error_outline_rounded,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _sharing = false);
+      }
+    }
+  }
+
+  Future<Map<String, Uint8List>> _loadShareImages(
+    SchoolNewsDetail detail,
+  ) async {
+    final images = <String, Uint8List>{};
+    for (final block in detail.contentBlocks) {
+      if (block is! SchoolNewsImageBlock || block.url.trim().isEmpty) {
+        continue;
+      }
+      try {
+        images[block.url] = await ref.read(
+          schoolNewsImageBytesProvider((
+            url: block.url,
+            referer: detail.item.detailUrl,
+          )).future,
+        );
+      } catch (_) {
+        continue;
+      }
+    }
+    return images;
   }
 }
 
@@ -262,4 +368,249 @@ class _SchoolNewsImagePreviewPage extends StatelessWidget {
       ),
     );
   }
+}
+
+class _SchoolNewsSharePoster extends StatelessWidget {
+  const _SchoolNewsSharePoster({required this.detail, required this.images});
+
+  final SchoolNewsDetail detail;
+  final Map<String, Uint8List> images;
+
+  @override
+  Widget build(BuildContext context) {
+    final dateLabel = DateFormat(
+      'yyyy-MM-dd',
+      'zh_CN',
+    ).format(detail.item.publishedAt);
+    final metaLines = detail.metaLines.isEmpty
+        ? ['发布时间：$dateLabel']
+        : detail.metaLines;
+
+    return Container(
+      color: const Color(0xFFFFFCF6),
+      padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
+      child: DefaultTextStyle(
+        style: const TextStyle(
+          color: Color(0xFF213A3C),
+          fontSize: 15,
+          height: 1.72,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F6A71).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.newspaper_rounded,
+                    color: Color(0xFF0F6A71),
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    '学校要闻',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F6A71),
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 22),
+            Text(
+              detail.title,
+              style: const TextStyle(
+                color: Color(0xFF142C2F),
+                fontSize: 25,
+                height: 1.26,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: [for (final line in metaLines) _ShareMetaChip(line)],
+            ),
+            const SizedBox(height: 18),
+            Container(
+              height: 1,
+              color: const Color(0xFF0F6A71).withValues(alpha: 0.16),
+            ),
+            const SizedBox(height: 18),
+            for (final block in detail.contentBlocks)
+              switch (block) {
+                SchoolNewsTextBlock(:final text) => Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: Text(text),
+                ),
+                SchoolNewsImageBlock(:final url, :final alt) => Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: _ShareImageBlock(
+                    bytes: images[url],
+                    alt: alt,
+                    failureLabel: '图片未能加载',
+                  ),
+                ),
+              },
+            const SizedBox(height: 8),
+            _SharePosterFooter(sourceUrl: detail.item.detailUrl),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ShareMetaChip extends StatelessWidget {
+  const _ShareMetaChip(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F6A71).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFF0F6A71),
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          height: 1.1,
+        ),
+      ),
+    );
+  }
+}
+
+class _ShareImageBlock extends StatelessWidget {
+  const _ShareImageBlock({
+    required this.bytes,
+    required this.failureLabel,
+    this.alt,
+  });
+
+  final Uint8List? bytes;
+  final String failureLabel;
+  final String? alt;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = bytes;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: data == null
+              ? Container(
+                  height: 92,
+                  alignment: Alignment.center,
+                  color: const Color(0xFFEFF4F2),
+                  child: Text(
+                    failureLabel,
+                    style: const TextStyle(
+                      color: Color(0xFF607172),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                )
+              : Image.memory(data, fit: BoxFit.fitWidth),
+        ),
+        if (alt != null && alt!.trim().isNotEmpty) ...[
+          const SizedBox(height: 7),
+          Text(
+            alt!,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF607172),
+              fontSize: 12,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _SharePosterFooter extends StatelessWidget {
+  const _SharePosterFooter({required this.sourceUrl});
+
+  final String sourceUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F6A71).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.auto_awesome_rounded,
+            color: Color(0xFF0F6A71),
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Uni Yi · 五邑大学校园助手',
+                  style: TextStyle(
+                    color: Color(0xFF0F6A71),
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  sourceUrl,
+                  style: const TextStyle(
+                    color: Color(0xFF607172),
+                    fontSize: 10,
+                    height: 1.32,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _shareFileName(String prefix, String title) {
+  final safeTitle = title
+      .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  final clipped = safeTitle.length > 28
+      ? safeTitle.substring(0, 28)
+      : safeTitle;
+  return '${prefix}_${clipped.isEmpty ? '详情' : clipped}.png';
 }

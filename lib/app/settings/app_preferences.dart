@@ -45,6 +45,46 @@ extension AppFontPresetX on AppFontPreset {
   };
 }
 
+enum ScheduleBackgroundStyle { clean, paper, doodle, linen, aurora, graph }
+
+extension ScheduleBackgroundStyleX on ScheduleBackgroundStyle {
+  String get label => switch (this) {
+    ScheduleBackgroundStyle.clean => '清爽留白',
+    ScheduleBackgroundStyle.paper => '手账纸纹',
+    ScheduleBackgroundStyle.doodle => '边角涂鸦',
+    ScheduleBackgroundStyle.linen => '织物质感',
+    ScheduleBackgroundStyle.aurora => '柔光渐层',
+    ScheduleBackgroundStyle.graph => '方格便签',
+  };
+
+  String get description => switch (this) {
+    ScheduleBackgroundStyle.clean => '保持默认干净背景',
+    ScheduleBackgroundStyle.paper => '淡淡横线和页边距',
+    ScheduleBackgroundStyle.doodle => '角落藏一点小细节',
+    ScheduleBackgroundStyle.linen => '低调细密的纹理',
+    ScheduleBackgroundStyle.aurora => '轻柔色块叠在底层',
+    ScheduleBackgroundStyle.graph => '像草稿本一样规整',
+  };
+
+  IconData get icon => switch (this) {
+    ScheduleBackgroundStyle.clean => Icons.layers_clear_outlined,
+    ScheduleBackgroundStyle.paper => Icons.description_outlined,
+    ScheduleBackgroundStyle.doodle => Icons.draw_outlined,
+    ScheduleBackgroundStyle.linen => Icons.texture_outlined,
+    ScheduleBackgroundStyle.aurora => Icons.blur_on_rounded,
+    ScheduleBackgroundStyle.graph => Icons.grid_4x4_rounded,
+  };
+
+  Color get accentColor => switch (this) {
+    ScheduleBackgroundStyle.clean => const Color(0xFF607172),
+    ScheduleBackgroundStyle.paper => const Color(0xFFB97834),
+    ScheduleBackgroundStyle.doodle => const Color(0xFFE07A8A),
+    ScheduleBackgroundStyle.linen => const Color(0xFF7C6655),
+    ScheduleBackgroundStyle.aurora => const Color(0xFF5478A6),
+    ScheduleBackgroundStyle.graph => const Color(0xFF2F8C72),
+  };
+}
+
 enum GymTimePreference { morning, afternoon, evening }
 
 extension GymTimePreferenceX on GymTimePreference {
@@ -70,6 +110,8 @@ class AppPreferences {
     this.compactMode = false,
     this.highContrast = false,
     this.showWeekends = true,
+    this.scheduleBackgroundStyle = ScheduleBackgroundStyle.paper,
+    this.scheduleBackgroundOpacity = 0.24,
     this.scheduleWeekNumber,
     this.scheduleWeekSetDate,
     this.selectedTermId,
@@ -89,6 +131,8 @@ class AppPreferences {
   final bool compactMode;
   final bool highContrast;
   final bool showWeekends;
+  final ScheduleBackgroundStyle scheduleBackgroundStyle;
+  final double scheduleBackgroundOpacity;
 
   /// The week number the user manually set.
   final int? scheduleWeekNumber;
@@ -136,6 +180,8 @@ class AppPreferences {
     bool? compactMode,
     bool? highContrast,
     bool? showWeekends,
+    ScheduleBackgroundStyle? scheduleBackgroundStyle,
+    double? scheduleBackgroundOpacity,
     int? scheduleWeekNumber,
     String? scheduleWeekSetDate,
     String? selectedTermId,
@@ -160,6 +206,11 @@ class AppPreferences {
       compactMode: compactMode ?? this.compactMode,
       highContrast: highContrast ?? this.highContrast,
       showWeekends: showWeekends ?? this.showWeekends,
+      scheduleBackgroundStyle:
+          scheduleBackgroundStyle ?? this.scheduleBackgroundStyle,
+      scheduleBackgroundOpacity: scheduleBackgroundOpacity == null
+          ? this.scheduleBackgroundOpacity
+          : _normalizeScheduleBackgroundOpacity(scheduleBackgroundOpacity),
       scheduleWeekNumber: scheduleWeekNumber ?? this.scheduleWeekNumber,
       scheduleWeekSetDate: scheduleWeekSetDate ?? this.scheduleWeekSetDate,
       selectedTermId: clearSelectedTermId
@@ -194,6 +245,8 @@ class AppPreferences {
   static const _compactModeKey = 'app.ui.compactMode';
   static const _highContrastKey = 'app.ui.highContrast';
   static const _showWeekendsKey = 'app.schedule.showWeekends';
+  static const _scheduleBackgroundStyleKey = 'app.schedule.backgroundStyle';
+  static const _scheduleBackgroundOpacityKey = 'app.schedule.backgroundOpacity';
   static const _scheduleWeekNumberKey = 'app.schedule.weekNumber';
   static const _scheduleWeekSetDateKey = 'app.schedule.weekSetDate';
   static const _selectedTermIdKey = 'app.schedule.selectedTermId';
@@ -217,6 +270,12 @@ class AppPreferences {
       compactMode: preferences.getBool(_compactModeKey) ?? false,
       highContrast: preferences.getBool(_highContrastKey) ?? false,
       showWeekends: preferences.getBool(_showWeekendsKey) ?? true,
+      scheduleBackgroundStyle: _scheduleBackgroundStyleFromName(
+        preferences.getString(_scheduleBackgroundStyleKey),
+      ),
+      scheduleBackgroundOpacity: _normalizeScheduleBackgroundOpacity(
+        preferences.getDouble(_scheduleBackgroundOpacityKey) ?? 0.24,
+      ),
       scheduleWeekNumber: preferences.getInt(_scheduleWeekNumberKey),
       scheduleWeekSetDate: preferences.getString(_scheduleWeekSetDateKey),
       selectedTermId: preferences.getString(_selectedTermIdKey),
@@ -244,6 +303,14 @@ class AppPreferences {
     await preferences.setBool(_compactModeKey, compactMode);
     await preferences.setBool(_highContrastKey, highContrast);
     await preferences.setBool(_showWeekendsKey, showWeekends);
+    await preferences.setString(
+      _scheduleBackgroundStyleKey,
+      scheduleBackgroundStyle.name,
+    );
+    await preferences.setDouble(
+      _scheduleBackgroundOpacityKey,
+      scheduleBackgroundOpacity,
+    );
     if (scheduleWeekNumber != null) {
       await preferences.setInt(_scheduleWeekNumberKey, scheduleWeekNumber!);
     } else {
@@ -332,8 +399,23 @@ class AppPreferences {
     return AppFontPreset.system;
   }
 
+  static ScheduleBackgroundStyle _scheduleBackgroundStyleFromName(
+    String? value,
+  ) {
+    for (final item in ScheduleBackgroundStyle.values) {
+      if (item.name == value) {
+        return item;
+      }
+    }
+    return ScheduleBackgroundStyle.paper;
+  }
+
   static double _normalizeFontScale(double value) {
     return value.clamp(0.9, 1.2);
+  }
+
+  static double _normalizeScheduleBackgroundOpacity(double value) {
+    return value.clamp(0.0, 0.5);
   }
 
   static GymTimePreference? _gymTimePreferenceFromName(String? value) {

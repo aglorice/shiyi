@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../../app/settings/app_preferences_controller.dart';
 import '../../../../shared/widgets/app_snackbar.dart';
 import '../../../../shared/widgets/async_value_view.dart';
+import '../../../../shared/widgets/schedule_background.dart';
 import '../../domain/entities/schedule_snapshot.dart';
 import '../controllers/schedule_controller.dart';
 
@@ -68,96 +69,111 @@ class _SchedulePageState extends ConsumerState<SchedulePage> {
           showAllWeeks: _showAllWeeks,
         );
 
-        return Column(
+        return Stack(
           children: [
-            if (snapshot.loadError != null)
-              _ScheduleErrorBanner(
-                message: snapshot.loadError!,
-                onRetry: () =>
-                    ref.read(scheduleControllerProvider.notifier).refresh(),
+            Positioned.fill(
+              child: ScheduleBackground(
+                style: preferences.scheduleBackgroundStyle,
+                opacity: preferences.scheduleBackgroundOpacity,
               ),
-            _ScheduleTopBar(
-              snapshot: snapshot,
-              weekLabel: weekFilterLabel,
-              onSwitchTerm: () => _showTermPicker(snapshot),
-              onSelectWeek: () => _showWeekPicker(snapshot),
-              viewMode: _viewMode,
-              onToggleViewMode: () {
-                setState(() {
-                  _viewMode = _viewMode == _ScheduleViewMode.week
-                      ? _ScheduleViewMode.today
-                      : _ScheduleViewMode.week;
-                });
-              },
             ),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: () =>
-                    ref.read(scheduleControllerProvider.notifier).refresh(),
-                child: _viewMode == _ScheduleViewMode.week
-                    ? LayoutBuilder(
-                        builder: (context, constraints) {
-                          final viewportHeight = constraints.hasBoundedHeight
-                              ? constraints.maxHeight
-                              : MediaQuery.sizeOf(context).height * 0.72;
-                          final contentHeight = viewportHeight > 20
-                              ? viewportHeight - 20
-                              : viewportHeight;
+            Column(
+              children: [
+                if (snapshot.loadError != null)
+                  _ScheduleErrorBanner(
+                    message: snapshot.loadError!,
+                    onRetry: () =>
+                        ref.read(scheduleControllerProvider.notifier).refresh(),
+                  ),
+                _ScheduleTopBar(
+                  snapshot: snapshot,
+                  weekLabel: weekFilterLabel,
+                  onSwitchTerm: () => _showTermPicker(snapshot),
+                  onSelectWeek: () => _showWeekPicker(snapshot),
+                  viewMode: _viewMode,
+                  onToggleViewMode: () {
+                    setState(() {
+                      _viewMode = _viewMode == _ScheduleViewMode.week
+                          ? _ScheduleViewMode.today
+                          : _ScheduleViewMode.week;
+                    });
+                  },
+                ),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: () =>
+                        ref.read(scheduleControllerProvider.notifier).refresh(),
+                    child: _viewMode == _ScheduleViewMode.week
+                        ? LayoutBuilder(
+                            builder: (context, constraints) {
+                              final viewportHeight =
+                                  constraints.hasBoundedHeight
+                                  ? constraints.maxHeight
+                                  : MediaQuery.sizeOf(context).height * 0.72;
+                              final contentHeight = viewportHeight > 20
+                                  ? viewportHeight - 20
+                                  : viewportHeight;
 
-                          return CustomScrollView(
+                              return CustomScrollView(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                slivers: [
+                                  SliverPadding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      12,
+                                      8,
+                                      12,
+                                      12,
+                                    ),
+                                    sliver: SliverToBoxAdapter(
+                                      child: SizedBox(
+                                        height: contentHeight,
+                                        child: _WeekTimetable(
+                                          entries: filteredEntries,
+                                          showAllWeeks: _showAllWeeks,
+                                          showWeekends:
+                                              preferences.showWeekends,
+                                          onOpenDetail: (entry) =>
+                                              _openCourseDetail(
+                                                snapshot,
+                                                entry,
+                                              ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          )
+                        : ListView(
                             physics: const AlwaysScrollableScrollPhysics(),
-                            slivers: [
-                              SliverPadding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  12,
-                                  8,
-                                  12,
-                                  12,
-                                ),
-                                sliver: SliverToBoxAdapter(
-                                  child: SizedBox(
-                                    height: contentHeight,
-                                    child: _WeekTimetable(
-                                      entries: filteredEntries,
-                                      showAllWeeks: _showAllWeeks,
-                                      showWeekends: preferences.showWeekends,
-                                      onOpenDetail: (entry) =>
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+                            children: [
+                              _TodayHeader(
+                                weekLabel: weekFilterLabel,
+                                entries: todayEntries,
+                                todayWeekday: todayWeekday,
+                              ),
+                              const SizedBox(height: 16),
+                              if (todayEntries.isEmpty)
+                                const _EmptyTodayState()
+                              else
+                                ...todayEntries.map(
+                                  (entry) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 14),
+                                    child: _CourseTile(
+                                      entry: entry,
+                                      colorSeed: todayWeekday,
+                                      onTap: () =>
                                           _openCourseDetail(snapshot, entry),
                                     ),
                                   ),
                                 ),
-                              ),
                             ],
-                          );
-                        },
-                      )
-                    : ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-                        children: [
-                          _TodayHeader(
-                            weekLabel: weekFilterLabel,
-                            entries: todayEntries,
-                            todayWeekday: todayWeekday,
                           ),
-                          const SizedBox(height: 16),
-                          if (todayEntries.isEmpty)
-                            const _EmptyTodayState()
-                          else
-                            ...todayEntries.map(
-                              (entry) => Padding(
-                                padding: const EdgeInsets.only(bottom: 14),
-                                child: _CourseTile(
-                                  entry: entry,
-                                  colorSeed: todayWeekday,
-                                  onTap: () =>
-                                      _openCourseDetail(snapshot, entry),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-              ),
+                  ),
+                ),
+              ],
             ),
           ],
         );
@@ -403,10 +419,7 @@ class _SchedulePageState extends ConsumerState<SchedulePage> {
 }
 
 class _ScheduleErrorBanner extends StatelessWidget {
-  const _ScheduleErrorBanner({
-    required this.message,
-    required this.onRetry,
-  });
+  const _ScheduleErrorBanner({required this.message, required this.onRetry});
 
   final String message;
   final VoidCallback onRetry;
@@ -671,12 +684,14 @@ class _WeekTimetable extends StatelessWidget {
 
         return Container(
           decoration: BoxDecoration(
-            color: colorScheme.surface,
+            color: colorScheme.surface.withValues(alpha: 0.72),
             borderRadius: BorderRadius.circular(16),
           ),
           foregroundDecoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: colorScheme.outlineVariant),
+            border: Border.all(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.76),
+            ),
           ),
           clipBehavior: Clip.antiAlias,
           child: Column(
@@ -724,7 +739,9 @@ class _WeekTimetable extends StatelessWidget {
                             Container(
                               width: sideWidth,
                               height: headerHeight,
-                              color: colorScheme.surfaceContainerLow,
+                              color: colorScheme.surfaceContainerLow.withValues(
+                                alpha: 0.5,
+                              ),
                               alignment: Alignment.center,
                               child: Text(
                                 '节',
@@ -847,8 +864,8 @@ class _WeekdayHeaderCell extends StatelessWidget {
       width: width,
       decoration: BoxDecoration(
         color: isToday
-            ? colorScheme.primary.withValues(alpha: 0.08)
-            : colorScheme.surfaceContainerLow,
+            ? colorScheme.primary.withValues(alpha: 0.12)
+            : colorScheme.surfaceContainerLow.withValues(alpha: 0.44),
       ),
       alignment: Alignment.center,
       child: Text(
@@ -878,7 +895,9 @@ class _SectionLabel extends StatelessWidget {
     return Container(
       width: width,
       height: height,
-      color: Theme.of(context).colorScheme.surfaceContainerLow,
+      color: Theme.of(
+        context,
+      ).colorScheme.surfaceContainerLow.withValues(alpha: 0.46),
       alignment: Alignment.center,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -917,8 +936,8 @@ class _EmptyCell extends StatelessWidget {
       width: width,
       height: height,
       color: isToday
-          ? colorScheme.primary.withValues(alpha: 0.03)
-          : colorScheme.surfaceContainerLow.withValues(alpha: 0.2),
+          ? colorScheme.primary.withValues(alpha: 0.06)
+          : colorScheme.surfaceContainerLow.withValues(alpha: 0.12),
     );
   }
 }
@@ -937,7 +956,7 @@ class _WeekCourseCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: accent.withValues(alpha: 0.13),
+      color: Color.lerp(Colors.white, accent, 0.16)!.withValues(alpha: 0.82),
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         onTap: onTap,
@@ -1197,7 +1216,7 @@ class _EmptyWeekState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.88),
+        color: Colors.white.withValues(alpha: 0.76),
         borderRadius: BorderRadius.circular(28),
       ),
       child: Column(
@@ -1528,7 +1547,7 @@ class _CourseTile extends StatelessWidget {
     final accent = _accentForIndex(colorSeed);
 
     return Material(
-      color: const Color(0xFFF9F7F2),
+      color: const Color(0xFFF9F7F2).withValues(alpha: 0.78),
       borderRadius: BorderRadius.circular(24),
       child: InkWell(
         onTap: onTap,
@@ -1640,7 +1659,7 @@ class _InfoChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Colors.white.withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Padding(
@@ -1683,7 +1702,7 @@ class _TodayHeader extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.9),
+        color: Colors.white.withValues(alpha: 0.76),
         borderRadius: BorderRadius.circular(28),
       ),
       child: Padding(
@@ -1901,7 +1920,7 @@ class _EmptyTodayState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.88),
+        color: Colors.white.withValues(alpha: 0.76),
         borderRadius: BorderRadius.circular(28),
       ),
       child: Column(

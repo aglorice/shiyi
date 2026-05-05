@@ -22,7 +22,9 @@ class AppPreferencesController extends Notifier<AppPreferences> {
       final random = Random();
       final pet =
           PixelPetType.values[random.nextInt(PixelPetType.values.length)];
-      debugPrint('🎲 Random pet: ${pet.name} (index: ${PixelPetType.values.indexOf(pet)})');
+      debugPrint(
+        '🎲 Random pet: ${pet.name} (index: ${PixelPetType.values.indexOf(pet)})',
+      );
       Future.microtask(() => _update(prefs.copyWith(pixelPet: pet.name)));
       return prefs.copyWith(pixelPet: pet.name);
     }
@@ -55,6 +57,14 @@ class AppPreferencesController extends Notifier<AppPreferences> {
 
   Future<void> setShowWeekends(bool value) async {
     await _update(state.copyWith(showWeekends: value));
+  }
+
+  Future<void> setScheduleBackgroundStyle(ScheduleBackgroundStyle value) async {
+    await _update(state.copyWith(scheduleBackgroundStyle: value));
+  }
+
+  Future<void> setScheduleBackgroundOpacity(double value) async {
+    await _update(state.copyWith(scheduleBackgroundOpacity: value));
   }
 
   Future<void> setScheduleWeek(int weekNumber) async {
@@ -95,6 +105,22 @@ class AppPreferencesController extends Notifier<AppPreferences> {
 
   Future<void> reset() async {
     await _update(const AppPreferences());
+  }
+
+  Future<void> resetAppearance() async {
+    await _update(
+      state.copyWith(
+        themePreset: AppThemePreset.ocean,
+        darkMode: false,
+        fontScale: 1.0,
+        fontPreset: AppFontPreset.system,
+        compactMode: false,
+        highContrast: false,
+        showWeekends: true,
+        scheduleBackgroundStyle: ScheduleBackgroundStyle.paper,
+        scheduleBackgroundOpacity: 0.24,
+      ),
+    );
   }
 
   Future<void> setGymPhoneNumber(String value) async {
