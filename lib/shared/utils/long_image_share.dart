@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -7,7 +6,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 class LongImageShare {
@@ -109,15 +107,13 @@ class LongImageShare {
     String? title,
     String? text,
     Rect? sharePositionOrigin,
-  }) async {
-    final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/$fileName');
-    await file.writeAsBytes(bytes);
+  }) {
     return SharePlus.instance.share(
       ShareParams(
         title: title,
         text: text,
-        files: [XFile(file.path, mimeType: 'image/png')],
+        files: [XFile.fromData(bytes, mimeType: 'image/png')],
+        fileNameOverrides: [fileName],
         sharePositionOrigin:
             sharePositionOrigin ?? const Rect.fromLTWH(0, 0, 100, 100),
       ),
