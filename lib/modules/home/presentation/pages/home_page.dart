@@ -33,6 +33,7 @@ class HomePage extends ConsumerWidget {
     final authState = ref.watch(authControllerProvider).value;
     final scheduleAsync = ref.watch(scheduleControllerProvider);
     final electricityAsync = ref.watch(electricityControllerProvider);
+    final electricityBindingAsync = ref.watch(electricityBindingProvider);
     final appointmentsAsync = ref.watch(myGymAppointmentsProvider);
     final schoolNewsAsync = ref.watch(schoolNewsControllerProvider);
     final hitokotoAsync = ref.watch(hitokotoControllerProvider);
@@ -64,6 +65,7 @@ class HomePage extends ConsumerWidget {
                 _DesktopOverviewGrid(
                   newsAsync: schoolNewsAsync,
                   electricityAsync: electricityAsync,
+                  electricityBindingAsync: electricityBindingAsync,
                   appointmentsAsync: appointmentsAsync,
                 ),
                 const SizedBox(height: 24),
@@ -89,6 +91,7 @@ class HomePage extends ConsumerWidget {
                 _MobileOverviewGrid(
                   newsAsync: schoolNewsAsync,
                   electricityAsync: electricityAsync,
+                  electricityBindingAsync: electricityBindingAsync,
                 ),
                 const SizedBox(height: 10),
                 _GymAppointmentsPreviewCard(
@@ -256,10 +259,12 @@ class _MobileOverviewGrid extends StatelessWidget {
   const _MobileOverviewGrid({
     required this.newsAsync,
     required this.electricityAsync,
+    required this.electricityBindingAsync,
   });
 
   final AsyncValue<SchoolNewsFeedState> newsAsync;
   final AsyncValue<ElectricityDashboard> electricityAsync;
+  final AsyncValue<ElectricityRoomBinding> electricityBindingAsync;
 
   @override
   Widget build(BuildContext context) {
@@ -270,7 +275,10 @@ class _MobileOverviewGrid extends StatelessWidget {
             children: [
               _SchoolNewsOverviewCard(newsAsync: newsAsync),
               const SizedBox(height: 10),
-              _ElectricityPreviewCard(electricityAsync: electricityAsync),
+              _ElectricityPreviewCard(
+                electricityAsync: electricityAsync,
+                bindingAsync: electricityBindingAsync,
+              ),
             ],
           );
         }
@@ -284,6 +292,7 @@ class _MobileOverviewGrid extends StatelessWidget {
               Expanded(
                 child: _ElectricityPreviewCard(
                   electricityAsync: electricityAsync,
+                  bindingAsync: electricityBindingAsync,
                 ),
               ),
             ],
@@ -298,11 +307,13 @@ class _DesktopOverviewGrid extends StatelessWidget {
   const _DesktopOverviewGrid({
     required this.newsAsync,
     required this.electricityAsync,
+    required this.electricityBindingAsync,
     required this.appointmentsAsync,
   });
 
   final AsyncValue<SchoolNewsFeedState> newsAsync;
   final AsyncValue<ElectricityDashboard> electricityAsync;
+  final AsyncValue<ElectricityRoomBinding> electricityBindingAsync;
   final AsyncValue<List<BookingRecord>> appointmentsAsync;
 
   @override
@@ -324,6 +335,7 @@ class _DesktopOverviewGrid extends StatelessWidget {
               width: columnWidth,
               child: _ElectricityPreviewCard(
                 electricityAsync: electricityAsync,
+                bindingAsync: electricityBindingAsync,
               ),
             ),
             SizedBox(
@@ -1029,9 +1041,13 @@ class _SessionRow extends StatelessWidget {
 }
 
 class _ElectricityPreviewCard extends StatelessWidget {
-  const _ElectricityPreviewCard({required this.electricityAsync});
+  const _ElectricityPreviewCard({
+    required this.electricityAsync,
+    required this.bindingAsync,
+  });
 
   final AsyncValue<ElectricityDashboard> electricityAsync;
+  final AsyncValue<ElectricityRoomBinding> bindingAsync;
 
   @override
   Widget build(BuildContext context) {
@@ -1139,9 +1155,10 @@ class _ElectricityPreviewCard extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            electricityAsync.hasValue
-                                ? electricityAsync.value!.binding.displayLabel
-                                : '',
+                            electricityAsync
+                                    .asData?.value.binding.displayLabel ??
+                                bindingAsync.asData?.value.displayLabel ??
+                                '',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: colorScheme.onSurfaceVariant,
                             ),

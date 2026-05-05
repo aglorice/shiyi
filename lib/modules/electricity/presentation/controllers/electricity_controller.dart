@@ -12,6 +12,10 @@ final electricityControllerProvider =
       retry: (_, __) => null,
     );
 
+final electricityBindingProvider = FutureProvider<ElectricityRoomBinding>(
+  (ref) => ref.read(electricityRepositoryProvider).readBinding(),
+);
+
 class ElectricityController extends AsyncNotifier<ElectricityDashboard> {
   ElectricityChargePeriod _currentPeriod = ElectricityChargePeriod.oneYear;
 
