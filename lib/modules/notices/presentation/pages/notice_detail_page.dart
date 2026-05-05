@@ -607,7 +607,6 @@ class _NoticeSharePoster extends StatelessWidget {
       dateLabel,
       if (detail.source != null && detail.source!.trim().isNotEmpty)
         detail.source!.trim(),
-      for (final line in detail.metaLines) line.trim(),
     }..removeWhere((line) => line.isEmpty);
 
     return Container(
