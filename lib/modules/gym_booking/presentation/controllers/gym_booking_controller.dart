@@ -61,7 +61,11 @@ class GymBookingController extends AsyncNotifier<GymBookingOverview> {
     );
 
     if (result case Success<BookingRecord>(data: final record)) {
-      // Refresh appointments list
+      // 1. 立即把新预约塞到"我的预约"provider 的当前 state，
+      //    让首页卡片和列表页瞬间显示，不必等下一次远端拉取。
+      _patchAppointmentsState(record);
+
+      // 2. 后台异步刷新一次远端，覆盖本地的占位数据。
       ref.invalidate(myGymAppointmentsProvider);
 
       final current = state.value;
@@ -90,6 +94,16 @@ class GymBookingController extends AsyncNotifier<GymBookingOverview> {
     }
 
     return result;
+  }
+
+  void _patchAppointmentsState(BookingRecord record) {
+    final notifier = ref.read(myGymAppointmentsProvider.notifier);
+    final current = ref.read(myGymAppointmentsProvider).value;
+    if (current == null) {
+      return;
+    }
+    final next = [record, ...current];
+    notifier.setRecords(next);
   }
 
   Future<void> changeDate(DateTime date) async {
@@ -135,6 +149,54 @@ class MyGymAppointmentsNotifier extends AsyncNotifier<List<BookingRecord>> {
     state = await AsyncValue.guard(() => _load(forceRefresh: true));
   }
 
+  /// 立即用本地数据替换 state，避免预约/取消后等远端返回造成的闪烁。
+  void setRecords(List<BookingRecord> records) {
+    state = AsyncData(_deduplicateAndSort(records));
+  }
+
+  /// 把指定预约标记为已取消，立即体现在列表里。
+  /// 服务端会用 `WID` 做匹配，所以这里也按 [BookingRecord.id]（场地 WID）匹配，
+  /// 同时按预约日期 + 时段过滤，避免误伤同场地的其他预约。
+  void markCancelled({
+    required String appointmentId,
+    required DateTime date,
+    required String slotLabel,
+  }) {
+    final current = state.value;
+    if (current == null) {
+      return;
+    }
+    final updated = current.map((record) {
+      final sameVenue = record.id == appointmentId;
+      final sameDate = DateTime(record.date.year, record.date.month, record.date.day) ==
+          DateTime(date.year, date.month, date.day);
+      final sameSlot = record.slotLabel == slotLabel;
+      if (sameVenue && sameDate && sameSlot) {
+        return BookingRecord(
+          id: record.id,
+          venueName: record.venueName,
+          slotLabel: record.slotLabel,
+          date: record.date,
+          status: '已取消',
+          statusCode: '003',
+          canCancel: false,
+          recordId: record.recordId,
+          bizWid: record.bizWid,
+          payStatusCode: 'CG_QX',
+          payStatusDisplay: '已取消',
+          flowStatusCode: record.flowStatusCode,
+          flowStatusDisplay: record.flowStatusDisplay,
+          venueTypeCode: record.venueTypeCode,
+          venueTypeDisplay: record.venueTypeDisplay,
+          submittedAt: record.submittedAt,
+          violation: record.violation,
+        );
+      }
+      return record;
+    }).toList();
+    state = AsyncData(updated);
+  }
+
   Future<List<BookingRecord>> _load({required bool forceRefresh}) async {
     final authState = await ref.watch(authControllerProvider.future);
     final session = authState.session;
@@ -154,16 +216,28 @@ class MyGymAppointmentsNotifier extends AsyncNotifier<List<BookingRecord>> {
     };
   }
 
-  /// 按 id 去重，再按日期降序排列（最新的排前面）。
+  /// 按 [BookingRecord.dedupeKey]（即 `ID_` 主键）去重，再按日期降序排列。
+  /// 历史 `WID` 去重会把同场地的多次预约错杀，这里改成稳定主键。
   List<BookingRecord> _deduplicateAndSort(List<BookingRecord> records) {
     final seen = <String>{};
     final unique = <BookingRecord>[];
     for (final record in records) {
-      if (seen.add(record.id)) {
+      if (seen.add(record.dedupeKey)) {
         unique.add(record);
       }
     }
-    unique.sort((a, b) => b.date.compareTo(a.date));
+    unique.sort((a, b) {
+      final dateCompare = b.date.compareTo(a.date);
+      if (dateCompare != 0) {
+        return dateCompare;
+      }
+      final left = a.submittedAt;
+      final right = b.submittedAt;
+      if (left != null && right != null) {
+        return right.compareTo(left);
+      }
+      return 0;
+    });
     return unique;
   }
 }

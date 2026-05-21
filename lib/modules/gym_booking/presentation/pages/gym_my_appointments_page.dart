@@ -75,7 +75,7 @@ class _GymMyAppointmentsPageState extends ConsumerState<GymMyAppointmentsPage> {
 
     final query = GymAppointmentQuery(
       pageNumber: reset ? 1 : (_page?.query.pageNumber ?? 1) + 1,
-      pageSize: 10,
+      pageSize: 20,
       keyword: _keywordController.text.trim(),
       statusCode: _selectedStatusCode,
     );
@@ -108,16 +108,29 @@ class _GymMyAppointmentsPageState extends ConsumerState<GymMyAppointmentsPage> {
     }
   }
 
-  /// 按 id 去重，再按日期降序排列（最新的排前面）。
+  /// 按 [BookingRecord.dedupeKey]（即 `ID_` 主键）去重。
+  /// 旧实现按 `WID` 去重会把同场地多次预约错杀，这里换成稳定主键。
+  /// 排序：先按预约日期降序（最新在前），同日期再按申请时间降序。
   List<BookingRecord> _deduplicateAndSort(List<BookingRecord> records) {
     final seen = <String>{};
     final unique = <BookingRecord>[];
     for (final record in records) {
-      if (seen.add(record.id)) {
+      if (seen.add(record.dedupeKey)) {
         unique.add(record);
       }
     }
-    unique.sort((a, b) => b.date.compareTo(a.date));
+    unique.sort((a, b) {
+      final dateCompare = b.date.compareTo(a.date);
+      if (dateCompare != 0) {
+        return dateCompare;
+      }
+      final left = a.submittedAt;
+      final right = b.submittedAt;
+      if (left != null && right != null) {
+        return right.compareTo(left);
+      }
+      return 0;
+    });
     return unique;
   }
 

@@ -551,11 +551,19 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
       return FailureResult(validation.failureOrNull!);
     }
 
+    // 同一份 formData（含 VERIFICATION/timestamp）必须在 checkCanApply 与
+    // startFlow 之间共享，否则两次请求的 VERIFICATION 不一致会被后端拒绝。
     final formData = _buildGymApplyFormData(draft);
-    final eligibilityResult = await checkGymBookingEligibility(
+
+    final checkResult = await _portalApi.fetchGymData(
       session,
-      draft: draft,
+      path: '/modules/application/checkCanApply.do',
+      formFields: formData,
     );
+    if (checkResult case FailureResult<dynamic>(failure: final failure)) {
+      return FailureResult(failure);
+    }
+    final eligibilityResult = _parseGymEligibility(checkResult.dataOrNull);
     if (eligibilityResult case FailureResult<GymBookingEligibility>(
       failure: final failure,
     )) {
@@ -596,6 +604,34 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
         final msg =
             _pickString(submitData, const ['msg', 'message']) ?? '预约提交失败。';
         return FailureResult(BusinessFailure(msg));
+      }
+    }
+
+    // startFlow 成功后必须再写一条同行人记录（申请人本人入 ZTRY），否则
+    // 服务端会把这条预约视为"未完成同行人登记"而清掉/隐藏，
+    // 表现就是"刚刚预约成功，过几分钟就查不到"。
+    final applyWid = formData['WID'] as String?;
+    if (applyWid != null && applyWid.isNotEmpty) {
+      final ztryResult = await _portalApi.fetchGymData(
+        session,
+        path: '/modules/application/insertSelfToZtry.do',
+        formFields: {
+          'APPLY_WID': applyWid,
+          'USER_ID': session.userId,
+          'BY51': '',
+        },
+      );
+      if (ztryResult case FailureResult<dynamic>(failure: final failure)) {
+        _logger.warn('[Gateway] insertSelfToZtry 失败 reason=${failure.message}');
+      } else {
+        final ztryData = ztryResult.dataOrNull;
+        if (ztryData is Map<String, dynamic>) {
+          final code = _pickString(ztryData, const ['code']);
+          if (code != null && code != '0') {
+            _logger.warn('[Gateway] insertSelfToZtry 返回非成功 code=$code '
+                'msg=${_pickString(ztryData, const ['msg', 'message'])}');
+          }
+        }
       }
     }
 
@@ -759,14 +795,16 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
         final matched = records.where((item) => item.id == wid).toList();
         if (matched.isNotEmpty) {
           final record = matched.first;
+          // 用综合状态填充详情，避免列表里"未使用 + PAY_STATUS=CG_QX"的脏数据
+          // 让详情页错误地显示"未使用"。
           detail = AppointmentDetail(
             id: detail.id,
             venueName: detail.venueName,
             address: detail.address,
             slotLabel: detail.slotLabel,
             date: detail.date,
-            status: record.status,
-            statusCode: record.statusCode,
+            status: record.effectiveStatus,
+            statusCode: record.effectiveStatusCode,
             attendeeName: detail.attendeeName,
             phone: detail.phone,
             department: detail.department,
@@ -783,7 +821,7 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
             checkInTime: detail.checkInTime,
             checkOutTime: detail.checkOutTime,
             durationMinutes: detail.durationMinutes,
-            canCancel: record.canCancel,
+            canCancel: record.isCancellable,
           );
         }
       }
@@ -832,6 +870,27 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
       if (code != null && code != '0') {
         final msg = _pickString(data, const ['msg', 'message']) ?? '取消预约失败。';
         return FailureResult(BusinessFailure(msg));
+      }
+    }
+
+    // 取消主流程之后，再调一次"清理同行人"接口，
+    // 否则 ZTRY 表里旧的同行人记录会残留，影响这条预约的结算/统计。
+    // 这一步即便失败也不阻塞主流程，只记录告警。
+    final ztryResult = await _portalApi.fetchGymData(
+      session,
+      path: '/modules/myApplication/deleteZtcyYyData.do',
+      formFields: {'APPLY_WID': appointmentId},
+    );
+    if (ztryResult case FailureResult<dynamic>(failure: final failure)) {
+      _logger.warn('[Gateway] deleteZtcyYyData 失败 reason=${failure.message}');
+    } else {
+      final ztryData = ztryResult.dataOrNull;
+      if (ztryData is Map<String, dynamic>) {
+        final code = _pickString(ztryData, const ['code']);
+        if (code != null && code != '0') {
+          _logger.warn('[Gateway] deleteZtcyYyData 返回非成功 code=$code '
+              'msg=${_pickString(ztryData, const ['msg', 'message'])}');
+        }
       }
     }
 
@@ -1933,6 +1992,8 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
         ? null
         : _normalizeDate(targetDate);
     final fallbackCapacity = _pickInt(row, const ['RNRS', 'capacity']) ?? 1;
+    final now = DateTime.now();
+    final today = _normalizeDate(now);
 
     for (var dayNum = 1; dayNum <= 7; dayNum++) {
       final dayData = row['day$dayNum'];
@@ -1957,6 +2018,11 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
         continue;
       }
 
+      // 过去日期一律跳过：体育馆系统不会让你约昨天的场。
+      if (slotDate.isBefore(today)) {
+        continue;
+      }
+
       final timesText = _pickString(dayMap, const ['times']) ?? '';
       if (timesText.isEmpty) {
         continue;
@@ -1971,12 +2037,23 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
         if (parts.length != 2) {
           continue;
         }
+        final startStr = parts[0].trim();
+        final endStr = parts[1].trim();
+
+        // 当天时段：起始时间已经到了/过了就不再放出来。
+        // 这一步是"过了那个时段还能预约"的根因修复。
+        if (slotDate == today) {
+          final start = _parseTimeOnDate(slotDate, startStr);
+          if (start != null && !start.isAfter(now)) {
+            continue;
+          }
+        }
 
         slots.add(
           BookableSlot(
             id: '${venueId}_${slotDate.toIso8601String()}_$trimmed',
-            startTime: parts[0].trim(),
-            endTime: parts[1].trim(),
+            startTime: startStr,
+            endTime: endStr,
             capacity: fallbackCapacity,
             remaining: 1,
             date: slotDate,
@@ -1987,6 +2064,19 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
     }
 
     return slots;
+  }
+
+  DateTime? _parseTimeOnDate(DateTime date, String hhmm) {
+    final parts = hhmm.split(':');
+    if (parts.length != 2) {
+      return null;
+    }
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) {
+      return null;
+    }
+    return DateTime(date.year, date.month, date.day, hour, minute);
   }
 
   Map<String, dynamic> _buildGymApplyFormData(BookingDraft draft) {
@@ -2142,22 +2232,43 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
     final sysj = _pickString(map, const ['SYSJ', 'SJ', 'timeRange']);
     final yyrq = _pickString(map, const ['YYRQ', 'YYSJ', 'date']);
     final wid = _pickString(map, const ['WID', 'wid']) ?? '';
+    final recordId = _pickString(map, const ['ID_', 'PROC_INST_ID_']);
+    final bizWid = _pickString(map, const ['BIZ_WID', 'bizWid']);
 
     if (venueName == null) return null;
 
-    final statusRaw = _pickString(map, const ['SYZT', 'PAY_STATUS']);
-    final statusDisplay = _pickString(map, const [
-      'SYZT_DISPLAY',
-      'PAY_STATUS_DISPLAY',
-      'PAY_STATUS',
-    ]);
+    final statusRaw = _pickString(map, const ['SYZT']);
+    final statusDisplay = _pickString(map, const ['SYZT_DISPLAY']);
     final status =
         _gymStatusToLabel(statusRaw) ?? statusDisplay ?? statusRaw ?? '未知';
+
+    final payStatusRaw = _pickString(map, const ['PAY_STATUS']);
+    final payStatusDisplay = _pickString(map, const ['PAY_STATUS_DISPLAY']);
+    final flowStatusRaw = _pickString(map, const ['FLOW_STATUS_']);
+    final flowStatusDisplay = _pickString(map, const ['FLOW_STATUS__DISPLAY']);
+    final venueTypeCode = _pickString(map, const ['HYSLX']);
+    final venueTypeDisplay = _pickString(map, const ['HYSLX_DISPLAY']);
+    final violation = _pickString(map, const ['SFWY_DISPLAY', 'SFWY']);
 
     DateTime? date;
     if (yyrq != null) {
       date = DateTime.tryParse(yyrq);
     }
+
+    final sqsj = _pickString(map, const ['SQSJ']);
+    DateTime? submittedAt;
+    if (sqsj != null && sqsj.isNotEmpty) {
+      // 学校系统返回 "yyyy-MM-dd HH:mm:ss"，DateTime.parse 不接受空格分隔，转一下。
+      submittedAt = DateTime.tryParse(sqsj.replaceFirst(' ', 'T'));
+    }
+
+    // 取消按钮的可点性：
+    // 1) 综合状态必须是"未使用"（兼顾 PAY_STATUS=CG_QX 的脏数据）
+    // 2) 预约时段尚未开始
+    final isPendingStatus =
+        statusRaw == '001' && payStatusRaw != 'CG_QX';
+    final slotNotStarted = _isSlotInFuture(date, sysj);
+    final canCancel = isPendingStatus && slotNotStarted;
 
     return BookingRecord(
       id: wid,
@@ -2166,8 +2277,53 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
       date: date ?? DateTime.now(),
       status: status,
       statusCode: statusRaw,
-      canCancel: statusRaw == '001',
+      canCancel: canCancel,
+      recordId: recordId,
+      bizWid: bizWid,
+      payStatusCode: payStatusRaw,
+      payStatusDisplay: payStatusDisplay,
+      flowStatusCode: flowStatusRaw,
+      flowStatusDisplay: flowStatusDisplay,
+      venueTypeCode: venueTypeCode,
+      venueTypeDisplay: venueTypeDisplay,
+      submittedAt: submittedAt,
+      violation: violation,
     );
+  }
+
+  /// 判断"预约日期 + SYSJ 起始时间"是否仍在未来。null 当作不限制返回 true。
+  bool _isSlotInFuture(DateTime? date, String? sysj) {
+    if (date == null) {
+      return true;
+    }
+    final start = sysj?.split('-').first.trim();
+    if (start == null || start.isEmpty) {
+      // 没有时段信息时按"当天 00:00 之前不可取消"宽松处理：
+      // 只要日期不是过去日期就允许。
+      final today = DateTime(
+        DateTime.now().year,
+        DateTime.now().month,
+        DateTime.now().day,
+      );
+      return !DateTime(date.year, date.month, date.day).isBefore(today);
+    }
+    final parts = start.split(':');
+    if (parts.length != 2) {
+      return true;
+    }
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) {
+      return true;
+    }
+    final slotStart = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      hour,
+      minute,
+    );
+    return slotStart.isAfter(DateTime.now());
   }
 
   String? _gymStatusToLabel(String? code) {

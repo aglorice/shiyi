@@ -51,17 +51,39 @@ class _DetailContent extends ConsumerWidget {
   final BookingRecord? prefillRecord;
 
   String get _displayStatus {
+    final statusCode = _displayStatusCode;
+    if (statusCode != null) {
+      return switch (statusCode) {
+        '001' => '未使用',
+        '002' => '已使用',
+        '003' => '已取消',
+        _ => detail.status != '未知' ? detail.status : prefillRecord?.status ?? '未知',
+      };
+    }
     if (detail.status != '未知') {
       return detail.status;
     }
     return prefillRecord?.status ?? detail.status;
   }
 
-  String? get _displayStatusCode =>
-      detail.statusCode ?? prefillRecord?.statusCode;
+  String? get _displayStatusCode {
+    // 优先用预约列表里综合过 PAY_STATUS 的状态码，处理"未使用+已取消"脏数据。
+    final fromList = prefillRecord?.effectiveStatusCode;
+    if (fromList != null) {
+      return fromList;
+    }
+    return detail.statusCode;
+  }
 
-  bool get _displayCanCancel =>
-      detail.canCancel || (prefillRecord?.canCancel ?? false);
+  bool get _displayCanCancel {
+    if (_displayStatusCode != '001') {
+      return false;
+    }
+    if (prefillRecord?.isCancellable == true) {
+      return true;
+    }
+    return detail.canCancel;
+  }
 
   String _statusHint() {
     return switch (_displayStatusCode) {
@@ -280,6 +302,15 @@ class _DetailContent extends ConsumerWidget {
         icon: Icons.check_circle_rounded,
         clearCurrent: false,
       );
+
+      // 立即在本地把这条预约标记成"已取消"，让首页/列表瞬间显示，
+      // 不必等远端 list 接口下一次返回（学校系统偶尔有几秒延迟）。
+      ref.read(myGymAppointmentsProvider.notifier).markCancelled(
+        appointmentId: detail.id,
+        date: detail.date,
+        slotLabel: detail.slotLabel,
+      );
+
       ref.invalidate(gymAppointmentDetailProvider(detail.id));
       ref.invalidate(myGymAppointmentsProvider);
     } else {

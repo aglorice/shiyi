@@ -117,17 +117,9 @@ class GymBookingRepositoryImpl implements GymBookingRepository {
     required AppSession session,
     bool forceRefresh = false,
   }) async {
-    if (!forceRefresh) {
-      final cached = await _cacheStore.readMap(_appointmentsCacheKey);
-      if (cached != null) {
-        final records = (cached['records'] as List<dynamic>)
-            .map((item) => BookingRecord.fromJson(item as Map<String, dynamic>))
-            .toList();
-        _logger.debug('Using cached gym appointments count=${records.length}');
-        return Success(records);
-      }
-    }
-
+    // 我的预约始终以远端为准，缓存只在网络失败时兜底。
+    // forceRefresh 参数保留，但当前实现两种路径一致——
+    // 都先打接口，失败再回落到缓存。
     final result = await _gateway.fetchMyGymAppointments(session);
     if (result case Success<List<BookingRecord>>(data: final records)) {
       await _cacheStore.writeMap(_appointmentsCacheKey, {

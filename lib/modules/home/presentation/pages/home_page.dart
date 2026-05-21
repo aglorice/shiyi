@@ -1307,27 +1307,7 @@ class _GymAppointmentsPreviewCard extends StatelessWidget {
           const SizedBox(height: 14),
           switch (appointmentsAsync) {
             AsyncData(:final value) =>
-              value.isEmpty
-                  ? _HomeGymEmptyState(
-                      onBook: () => context.push('/gym-booking'),
-                    )
-                  : Column(
-                      children: [
-                        for (final record in value.take(3)) ...[
-                          _HomeAppointmentRow(record: record),
-                          if (record != value.take(3).last)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 6),
-                              child: Divider(
-                                height: 1,
-                                color: colorScheme.outlineVariant.withValues(
-                                  alpha: 0.5,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ],
-                    ),
+              _PendingAppointmentsView(records: value),
             AsyncError(:final error) => Row(
               children: [
                 Icon(
@@ -1363,6 +1343,92 @@ class _GymAppointmentsPreviewCard extends StatelessWidget {
   }
 }
 
+/// 卡片只展示"未完成"预约（未使用且时段未结束），让首页贴近用户当下需求。
+/// 历史已使用/已取消的记录依然可以从"查看全部"里访问。
+class _PendingAppointmentsView extends StatelessWidget {
+  const _PendingAppointmentsView({required this.records});
+
+  final List<BookingRecord> records;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final now = DateTime.now();
+
+    final pending = records.where((record) {
+      if (record.effectiveStatusCode != '001') {
+        return false;
+      }
+      final slotEnd = _slotEnd(record);
+      // 没有解析到时段时，宽松地用日期当天 23:59 当结束兜底。
+      return slotEnd == null
+          ? !DateTime(record.date.year, record.date.month, record.date.day)
+              .isBefore(DateTime(now.year, now.month, now.day))
+          : slotEnd.isAfter(now);
+    }).toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+
+    if (pending.isEmpty) {
+      return _HomeGymEmptyState(onBook: () => context.push('/gym-booking'));
+    }
+
+    final visible = pending.take(3).toList();
+
+    return Column(
+      children: [
+        for (final record in visible) ...[
+          _HomeAppointmentRow(record: record),
+          if (record != visible.last)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Divider(
+                height: 1,
+                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+              ),
+            ),
+        ],
+        if (pending.length > visible.length)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '还有 ${pending.length - visible.length} 条待使用',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  DateTime? _slotEnd(BookingRecord record) {
+    final parts = record.slotLabel.split('-');
+    if (parts.length != 2) {
+      return null;
+    }
+    final endParts = parts[1].trim().split(':');
+    if (endParts.length != 2) {
+      return null;
+    }
+    final hour = int.tryParse(endParts[0]);
+    final minute = int.tryParse(endParts[1]);
+    if (hour == null || minute == null) {
+      return null;
+    }
+    return DateTime(
+      record.date.year,
+      record.date.month,
+      record.date.day,
+      hour,
+      minute,
+    );
+  }
+}
+
 class _HomeAppointmentRow extends StatelessWidget {
   const _HomeAppointmentRow({required this.record});
 
@@ -1373,11 +1439,13 @@ class _HomeAppointmentRow extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    final statusColor = gymStatusColor(context, record.statusCode);
+    final statusColor = gymStatusColor(context, record.effectiveStatusCode);
 
     return InkWell(
-      onTap: () =>
-          context.push('/gym-booking/appointment/${record.id}', extra: record),
+      onTap: () => context.push(
+        '/gym-booking/appointment/${record.id}',
+        extra: record,
+      ),
       borderRadius: BorderRadius.circular(12),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1416,8 +1484,8 @@ class _HomeAppointmentRow extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               GymStatusBadge(
-                label: record.status,
-                statusCode: record.statusCode,
+                label: record.effectiveStatus,
+                statusCode: record.effectiveStatusCode,
               ),
             ],
           ),

@@ -199,8 +199,19 @@ class BookingRecord {
     required this.status,
     this.statusCode,
     this.canCancel = false,
+    this.recordId,
+    this.bizWid,
+    this.payStatusCode,
+    this.payStatusDisplay,
+    this.flowStatusCode,
+    this.flowStatusDisplay,
+    this.venueTypeCode,
+    this.venueTypeDisplay,
+    this.submittedAt,
+    this.violation,
   });
 
+  /// 场地 WID（取消预约接口需要的字段）。同一场地多次预约会重复。
   final String id;
   final String venueName;
   final String slotLabel;
@@ -208,6 +219,59 @@ class BookingRecord {
   final String status;
   final String? statusCode;
   final bool canCancel;
+
+  /// 预约记录真正的主键（`ID_`），用来去重。
+  /// 早期缓存可能没有这一项，回退用 [id]+[date]+[slotLabel] 作为弱主键。
+  final String? recordId;
+
+  /// 业务主键（`BIZ_WID`），用于跳转到场地详情。
+  final String? bizWid;
+  final String? payStatusCode;
+  final String? payStatusDisplay;
+  final String? flowStatusCode;
+  final String? flowStatusDisplay;
+  final String? venueTypeCode;
+  final String? venueTypeDisplay;
+  final DateTime? submittedAt;
+
+  /// 是否违约（`SFWY`）。
+  final String? violation;
+
+  /// 用来在 UI 里去重的稳定键。
+  /// 服务端有 `ID_` 时优先用它，否则按"WID + 日期 + 时段"组合。
+  String get dedupeKey {
+    final rid = recordId;
+    if (rid != null && rid.isNotEmpty) {
+      return rid;
+    }
+    return '$id|${date.toIso8601String()}|$slotLabel';
+  }
+
+  /// 综合 `SYZT` 和 `PAY_STATUS` 计算的真实状态码。
+  /// 学校系统经常出现 `SYZT=001 + PAY_STATUS=CG_QX`（"未使用+已取消"）的脏数据，
+  /// 这种情况按"已取消"展示更贴近用户的实际感受。
+  String? get effectiveStatusCode {
+    if (statusCode == '003') {
+      return '003';
+    }
+    if (payStatusCode == 'CG_QX') {
+      return '003';
+    }
+    return statusCode;
+  }
+
+  String get effectiveStatus {
+    return switch (effectiveStatusCode) {
+      '001' => '未使用',
+      '002' => '已使用',
+      '003' => '已取消',
+      _ => status,
+    };
+  }
+
+  /// 真正可以走取消接口的条件：综合状态是"未使用"，且 `canCancel`
+  /// 已经在网关层结合"时段尚未开始"判断过。
+  bool get isCancellable => effectiveStatusCode == '001' && canCancel;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -217,6 +281,16 @@ class BookingRecord {
     'status': status,
     'statusCode': statusCode,
     'canCancel': canCancel,
+    'recordId': recordId,
+    'bizWid': bizWid,
+    'payStatusCode': payStatusCode,
+    'payStatusDisplay': payStatusDisplay,
+    'flowStatusCode': flowStatusCode,
+    'flowStatusDisplay': flowStatusDisplay,
+    'venueTypeCode': venueTypeCode,
+    'venueTypeDisplay': venueTypeDisplay,
+    'submittedAt': submittedAt?.toIso8601String(),
+    'violation': violation,
   };
 
   factory BookingRecord.fromJson(Map<String, dynamic> json) {
@@ -228,6 +302,19 @@ class BookingRecord {
       status: json['status'] as String,
       statusCode: json['statusCode'] as String?,
       canCancel: json['canCancel'] as bool? ?? false,
+      recordId: json['recordId'] as String?,
+      bizWid: json['bizWid'] as String?,
+      payStatusCode: json['payStatusCode'] as String?,
+      payStatusDisplay: json['payStatusDisplay'] as String?,
+      flowStatusCode: json['flowStatusCode']?.toString(),
+      flowStatusDisplay: json['flowStatusDisplay'] as String?,
+      venueTypeCode: json['venueTypeCode'] as String?,
+      venueTypeDisplay: json['venueTypeDisplay'] as String?,
+      submittedAt: switch (json['submittedAt']) {
+        final String value when value.isNotEmpty => DateTime.tryParse(value),
+        _ => null,
+      },
+      violation: json['violation'] as String?,
     );
   }
 }
