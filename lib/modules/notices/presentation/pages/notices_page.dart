@@ -146,6 +146,7 @@ class _NoticesPageState extends ConsumerState<NoticesPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('通知'),
+        centerTitle: true,
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
@@ -608,9 +609,8 @@ class _NoticeTile extends StatelessWidget {
                     item.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
                       height: 1.4,
                     ),
                   ),
@@ -633,8 +633,7 @@ class _NoticeTile extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: theme.textTheme.labelSmall?.copyWith(
                               color: colorScheme.primary,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ),

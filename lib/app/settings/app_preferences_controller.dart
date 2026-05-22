@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../shared/widgets/pixel_pet.dart';
 import '../di/app_providers.dart';
 import 'app_preferences.dart';
+import 'schedule_timing_preference.dart';
 
 final appPreferencesControllerProvider =
     NotifierProvider<AppPreferencesController, AppPreferences>(
@@ -36,7 +37,18 @@ class AppPreferencesController extends Notifier<AppPreferences> {
   }
 
   Future<void> setDarkMode(bool value) async {
-    await _update(state.copyWith(darkMode: value));
+    // 旧 API 保留兼容：等价于 setThemeMode(dark/light)。
+    await _update(state.copyWith(
+      darkMode: value,
+      themeMode: value ? AppThemeMode.dark : AppThemeMode.light,
+    ));
+  }
+
+  Future<void> setThemeMode(AppThemeMode value) async {
+    await _update(state.copyWith(
+      themeMode: value,
+      darkMode: value == AppThemeMode.dark,
+    ));
   }
 
   Future<void> setFontScale(double value) async {
@@ -65,6 +77,20 @@ class AppPreferencesController extends Notifier<AppPreferences> {
 
   Future<void> setScheduleBackgroundOpacity(double value) async {
     await _update(state.copyWith(scheduleBackgroundOpacity: value));
+  }
+
+  Future<void> setCustomScheduleBackgroundPath(String? path) async {
+    if (path == null || path.isEmpty) {
+      await _update(
+        state.copyWith(clearCustomScheduleBackgroundPath: true),
+      );
+    } else {
+      await _update(state.copyWith(customScheduleBackgroundPath: path));
+    }
+  }
+
+  Future<void> setScheduleTiming(ScheduleTimingPreference value) async {
+    await _update(state.copyWith(scheduleTiming: value));
   }
 
   Future<void> setScheduleWeek(int weekNumber) async {
@@ -112,13 +138,15 @@ class AppPreferencesController extends Notifier<AppPreferences> {
       state.copyWith(
         themePreset: AppThemePreset.ocean,
         darkMode: false,
+        themeMode: AppThemeMode.light,
         fontScale: 1.0,
         fontPreset: AppFontPreset.system,
         compactMode: false,
         highContrast: false,
         showWeekends: true,
-        scheduleBackgroundStyle: ScheduleBackgroundStyle.paper,
+        scheduleBackgroundStyle: ScheduleBackgroundStyle.aurora,
         scheduleBackgroundOpacity: 0.24,
+        clearCustomScheduleBackgroundPath: true,
       ),
     );
   }

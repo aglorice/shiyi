@@ -44,7 +44,7 @@ class _UniYiAppState extends ConsumerState<UniYiApp> {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(preferences),
       darkTheme: AppTheme.dark(preferences),
-      themeMode: preferences.themeMode,
+      themeMode: preferences.flutterThemeMode,
       routerConfig: router,
     );
   }

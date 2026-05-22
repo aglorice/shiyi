@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'schedule_timing_preference.dart';
+
 enum AppThemePreset { ocean, sunrise, forest }
 
 extension AppThemePresetX on AppThemePreset {
@@ -83,6 +85,47 @@ extension ScheduleBackgroundStyleX on ScheduleBackgroundStyle {
     ScheduleBackgroundStyle.aurora => const Color(0xFF5478A6),
     ScheduleBackgroundStyle.graph => const Color(0xFF2F8C72),
   };
+
+  /// 在「课表设置」里给用户挑选的背景集合。
+  /// 删掉了 paper（横线纸太花）、doodle（涂鸦不够干净），
+  /// 留下 4 个气质统一的。其余值仍然存在（旧版本可能已经被持久化），
+  /// 但 UI 不再当成可选项展示——遇到这两种值会自动 fallback 到 [aurora]。
+  static const List<ScheduleBackgroundStyle> selectable = [
+    ScheduleBackgroundStyle.clean,
+    ScheduleBackgroundStyle.aurora,
+    ScheduleBackgroundStyle.graph,
+    ScheduleBackgroundStyle.linen,
+  ];
+
+  /// 不在 [selectable] 里的旧值需要回落到默认。
+  ScheduleBackgroundStyle get sanitized {
+    return selectable.contains(this) ? this : ScheduleBackgroundStyle.aurora;
+  }
+}
+
+/// 主题模式偏好。新增的"跟随系统"。
+enum AppThemeMode { light, dark, system }
+
+extension AppThemeModeX on AppThemeMode {
+  String get label => switch (this) {
+    AppThemeMode.light => '浅色',
+    AppThemeMode.dark => '深色',
+    AppThemeMode.system => '跟随系统',
+  };
+
+  IconData get icon => switch (this) {
+    AppThemeMode.light => Icons.light_mode_outlined,
+    AppThemeMode.dark => Icons.dark_mode_outlined,
+    AppThemeMode.system => Icons.brightness_auto_outlined,
+  };
+
+  ThemeMode toFlutter() {
+    return switch (this) {
+      AppThemeMode.light => ThemeMode.light,
+      AppThemeMode.dark => ThemeMode.dark,
+      AppThemeMode.system => ThemeMode.system,
+    };
+  }
 }
 
 enum GymTimePreference { morning, afternoon, evening }
@@ -105,13 +148,16 @@ class AppPreferences {
   const AppPreferences({
     this.themePreset = AppThemePreset.ocean,
     this.darkMode = false,
+    this.themeMode = AppThemeMode.light,
     this.fontScale = 1.0,
     this.fontPreset = AppFontPreset.system,
     this.compactMode = false,
     this.highContrast = false,
     this.showWeekends = true,
-    this.scheduleBackgroundStyle = ScheduleBackgroundStyle.paper,
+    this.scheduleBackgroundStyle = ScheduleBackgroundStyle.aurora,
     this.scheduleBackgroundOpacity = 0.24,
+    this.customScheduleBackgroundPath,
+    this.scheduleTiming = ScheduleTimingPreference.defaults,
     this.scheduleWeekNumber,
     this.scheduleWeekSetDate,
     this.selectedTermId,
@@ -126,6 +172,10 @@ class AppPreferences {
 
   final AppThemePreset themePreset;
   final bool darkMode;
+
+  /// 主题模式（浅色/深色/跟随系统）。
+  /// 优先级高于 [darkMode]。当为 [AppThemeMode.system] 时根据系统决定。
+  final AppThemeMode themeMode;
   final double fontScale;
   final AppFontPreset fontPreset;
   final bool compactMode;
@@ -133,6 +183,12 @@ class AppPreferences {
   final bool showWeekends;
   final ScheduleBackgroundStyle scheduleBackgroundStyle;
   final double scheduleBackgroundOpacity;
+
+  /// 用户从相册选的自定义课表背景图本地路径。null 表示未设置。
+  final String? customScheduleBackgroundPath;
+
+  /// 节次时间表配置（上午/下午/晚上 + 节长 + 课间）。
+  final ScheduleTimingPreference scheduleTiming;
 
   /// The week number the user manually set.
   final int? scheduleWeekNumber;
@@ -168,13 +224,21 @@ class AppPreferences {
     return scheduleWeekNumber! + (diff / 7).floor();
   }
 
-  ThemeMode get themeMode => darkMode ? ThemeMode.dark : ThemeMode.light;
+  ThemeMode get flutterThemeMode {
+    // 优先用 themeMode 字段；为兼容老版本（只持久化了 darkMode），
+    // 若 themeMode 是默认 light 但 darkMode=true，仍按 dark 处理。
+    if (themeMode == AppThemeMode.light && darkMode) {
+      return ThemeMode.dark;
+    }
+    return themeMode.toFlutter();
+  }
 
   String get fontScaleLabel => '${(fontScale * 100).round()}%';
 
   AppPreferences copyWith({
     AppThemePreset? themePreset,
     bool? darkMode,
+    AppThemeMode? themeMode,
     double? fontScale,
     AppFontPreset? fontPreset,
     bool? compactMode,
@@ -182,6 +246,9 @@ class AppPreferences {
     bool? showWeekends,
     ScheduleBackgroundStyle? scheduleBackgroundStyle,
     double? scheduleBackgroundOpacity,
+    String? customScheduleBackgroundPath,
+    bool clearCustomScheduleBackgroundPath = false,
+    ScheduleTimingPreference? scheduleTiming,
     int? scheduleWeekNumber,
     String? scheduleWeekSetDate,
     String? selectedTermId,
@@ -201,6 +268,7 @@ class AppPreferences {
     return AppPreferences(
       themePreset: themePreset ?? this.themePreset,
       darkMode: darkMode ?? this.darkMode,
+      themeMode: themeMode ?? this.themeMode,
       fontScale: fontScale ?? this.fontScale,
       fontPreset: fontPreset ?? this.fontPreset,
       compactMode: compactMode ?? this.compactMode,
@@ -211,6 +279,10 @@ class AppPreferences {
       scheduleBackgroundOpacity: scheduleBackgroundOpacity == null
           ? this.scheduleBackgroundOpacity
           : _normalizeScheduleBackgroundOpacity(scheduleBackgroundOpacity),
+      customScheduleBackgroundPath: clearCustomScheduleBackgroundPath
+          ? null
+          : (customScheduleBackgroundPath ?? this.customScheduleBackgroundPath),
+      scheduleTiming: scheduleTiming ?? this.scheduleTiming,
       scheduleWeekNumber: scheduleWeekNumber ?? this.scheduleWeekNumber,
       scheduleWeekSetDate: scheduleWeekSetDate ?? this.scheduleWeekSetDate,
       selectedTermId: clearSelectedTermId
@@ -240,6 +312,7 @@ class AppPreferences {
 
   static const _themePresetKey = 'app.ui.themePreset';
   static const _darkModeKey = 'app.ui.darkMode';
+  static const _themeModeKey = 'app.ui.themeMode';
   static const _fontScaleKey = 'app.ui.fontScale';
   static const _fontPresetKey = 'app.ui.fontPreset';
   static const _compactModeKey = 'app.ui.compactMode';
@@ -247,6 +320,9 @@ class AppPreferences {
   static const _showWeekendsKey = 'app.schedule.showWeekends';
   static const _scheduleBackgroundStyleKey = 'app.schedule.backgroundStyle';
   static const _scheduleBackgroundOpacityKey = 'app.schedule.backgroundOpacity';
+  static const _customScheduleBackgroundPathKey =
+      'app.schedule.customBackgroundPath';
+  static const _scheduleTimingKey = 'app.schedule.timing';
   static const _scheduleWeekNumberKey = 'app.schedule.weekNumber';
   static const _scheduleWeekSetDateKey = 'app.schedule.weekSetDate';
   static const _selectedTermIdKey = 'app.schedule.selectedTermId';
@@ -263,6 +339,7 @@ class AppPreferences {
     return AppPreferences(
       themePreset: _themePresetFromName(preferences.getString(_themePresetKey)),
       darkMode: preferences.getBool(_darkModeKey) ?? false,
+      themeMode: _themeModeFromName(preferences.getString(_themeModeKey)),
       fontScale: _normalizeFontScale(
         preferences.getDouble(_fontScaleKey) ?? 1.0,
       ),
@@ -272,9 +349,14 @@ class AppPreferences {
       showWeekends: preferences.getBool(_showWeekendsKey) ?? true,
       scheduleBackgroundStyle: _scheduleBackgroundStyleFromName(
         preferences.getString(_scheduleBackgroundStyleKey),
-      ),
+      ).sanitized,
       scheduleBackgroundOpacity: _normalizeScheduleBackgroundOpacity(
         preferences.getDouble(_scheduleBackgroundOpacityKey) ?? 0.24,
+      ),
+      customScheduleBackgroundPath:
+          preferences.getString(_customScheduleBackgroundPathKey),
+      scheduleTiming: ScheduleTimingPreference.fromJsonString(
+        preferences.getString(_scheduleTimingKey),
       ),
       scheduleWeekNumber: preferences.getInt(_scheduleWeekNumberKey),
       scheduleWeekSetDate: preferences.getString(_scheduleWeekSetDateKey),
@@ -298,6 +380,7 @@ class AppPreferences {
   Future<void> persist(SharedPreferences preferences) async {
     await preferences.setString(_themePresetKey, themePreset.name);
     await preferences.setBool(_darkModeKey, darkMode);
+    await preferences.setString(_themeModeKey, themeMode.name);
     await preferences.setDouble(_fontScaleKey, fontScale);
     await preferences.setString(_fontPresetKey, fontPreset.name);
     await preferences.setBool(_compactModeKey, compactMode);
@@ -310,6 +393,18 @@ class AppPreferences {
     await preferences.setDouble(
       _scheduleBackgroundOpacityKey,
       scheduleBackgroundOpacity,
+    );
+    if (customScheduleBackgroundPath != null) {
+      await preferences.setString(
+        _customScheduleBackgroundPathKey,
+        customScheduleBackgroundPath!,
+      );
+    } else {
+      await preferences.remove(_customScheduleBackgroundPathKey);
+    }
+    await preferences.setString(
+      _scheduleTimingKey,
+      scheduleTiming.toJsonString(),
     );
     if (scheduleWeekNumber != null) {
       await preferences.setInt(_scheduleWeekNumberKey, scheduleWeekNumber!);
@@ -388,6 +483,15 @@ class AppPreferences {
       }
     }
     return AppThemePreset.ocean;
+  }
+
+  static AppThemeMode _themeModeFromName(String? value) {
+    for (final item in AppThemeMode.values) {
+      if (item.name == value) {
+        return item;
+      }
+    }
+    return AppThemeMode.light;
   }
 
   static AppFontPreset _fontPresetFromName(String? value) {

@@ -170,17 +170,22 @@ class _SettingsScheduleExportPageState
 
     final exporter = ref.read(scheduleIcsExporterProvider);
     try {
+      final skipped = <String>[];
       final ics = exporter.buildIcs(
         snapshot: snapshot,
         referenceDate: DateTime.now(),
         referenceWeek: week,
+        skipped: skipped,
+        timing: preferences.scheduleTiming,
       );
       if (ics == null) {
         if (mounted) {
           AppSnackBar.show(
             context,
-            message: '当前学期没有课程可导出',
-            tone: AppSnackBarTone.info,
+            message: skipped.isEmpty
+                ? '当前学期没有课程可导出'
+                : '没有可识别的时间，原因：${skipped.first}',
+            tone: AppSnackBarTone.error,
           );
         }
         return;

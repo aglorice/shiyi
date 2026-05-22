@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../app/layout/breakpoints.dart';
 import '../../../../app/settings/app_preferences_controller.dart';
+import '../../../../app/settings/schedule_timing_preference.dart';
 import '../../../../core/error/error_display.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../shared/widgets/pixel_pet.dart';
@@ -60,7 +61,10 @@ class HomePage extends ConsumerWidget {
                   quoteAsync: hitokotoAsync,
                 ),
                 const SizedBox(height: 18),
-                _TodayCourseCard(scheduleAsync: scheduleAsync),
+                _TodayCourseCard(
+                  scheduleAsync: scheduleAsync,
+                  timing: preferences.scheduleTiming,
+                ),
                 const SizedBox(height: 14),
                 _DesktopOverviewGrid(
                   newsAsync: schoolNewsAsync,
@@ -86,7 +90,10 @@ class HomePage extends ConsumerWidget {
                   quoteAsync: hitokotoAsync,
                 ),
                 const SizedBox(height: 14),
-                _TodayCourseCard(scheduleAsync: scheduleAsync),
+                _TodayCourseCard(
+                  scheduleAsync: scheduleAsync,
+                  timing: preferences.scheduleTiming,
+                ),
                 const SizedBox(height: 10),
                 _MobileOverviewGrid(
                   newsAsync: schoolNewsAsync,
@@ -818,9 +825,13 @@ class _EasterEggParticles extends StatelessWidget {
 }
 
 class _TodayCourseCard extends StatelessWidget {
-  const _TodayCourseCard({required this.scheduleAsync});
+  const _TodayCourseCard({
+    required this.scheduleAsync,
+    required this.timing,
+  });
 
   final AsyncValue<ScheduleSnapshot> scheduleAsync;
+  final ScheduleTimingPreference timing;
 
   @override
   Widget build(BuildContext context) {
@@ -948,6 +959,7 @@ class _TodayCourseCard extends StatelessWidget {
           _SessionRow(
             entry: entries[i],
             accentColor: _SessionRow.colorForIndex(i),
+            timing: timing,
           ),
         ],
         if (entries.length > maxVisible) ...[
@@ -965,10 +977,15 @@ class _TodayCourseCard extends StatelessWidget {
 }
 
 class _SessionRow extends StatelessWidget {
-  const _SessionRow({required this.entry, required this.accentColor});
+  const _SessionRow({
+    required this.entry,
+    required this.accentColor,
+    required this.timing,
+  });
 
   final ScheduleEntry entry;
   final Color accentColor;
+  final ScheduleTimingPreference timing;
 
   static const _accentColors = [
     Color(0xFF5B8DEF),
@@ -981,10 +998,24 @@ class _SessionRow extends StatelessWidget {
   static Color colorForIndex(int index) =>
       _accentColors[index % _accentColors.length];
 
+  /// 用 timing 解析当前 entry 的起讫。null 表示用不上。
+  ({String start, String end})? _resolveTimes() {
+    if (!timing.enabled) return null;
+    final startSec = entry.session.startSection;
+    final endSec = entry.session.endSection;
+    if (startSec == null || endSec == null) return null;
+    final all = timing.resolveSectionTimes();
+    final s = all[startSec];
+    final e = all[endSec];
+    if (s == null || e == null) return null;
+    return (start: s.start, end: e.end);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final times = _resolveTimes();
 
     return IntrinsicHeight(
       child: Row(
@@ -998,31 +1029,20 @@ class _SessionRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          Padding(
-            padding: const EdgeInsets.only(top: 1),
-            child: Text(
-              entry.session.startTime,
-              style: theme.textTheme.labelMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.only(bottom: 2),
+              padding: const EdgeInsets.only(bottom: 2, top: 1),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     entry.course.name,
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                       height: 1.35,
                     ),
                   ),
-                  const SizedBox(height: 1),
+                  const SizedBox(height: 2),
                   Text(
                     entry.session.location.fullName,
                     style: theme.textTheme.bodySmall?.copyWith(
@@ -1034,6 +1054,45 @@ class _SessionRow extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(width: 10),
+          if (times != null)
+            // 启用具体时间：右侧两行 HH:mm
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    times.start,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: accentColor,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    times.end,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            // 未启用：保持以前的样式——一个节次"第N节"
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Text(
+                entry.session.sectionLabel,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
         ],
       ),
     );

@@ -5,7 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
 
 import '../../core/error/failure.dart';
-import '../../core/logging/api_log_buffer.dart';
+import '../../core/logging/api_log_interceptor.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/result/result.dart';
 import '../../modules/auth/domain/entities/app_session.dart';
@@ -31,7 +31,7 @@ class WyuPortalApi {
            validateStatus: (_) => true,
            headers: {'User-Agent': userAgent},
          ),
-       );
+       )..interceptors.add(ApiLogInterceptor(label: 'Portal'));
 
   static const _portalServiceUrl = 'https://ehall.wyu.edu.cn/login';
   static const _serviceCardWid = '8558486040491173';
@@ -357,22 +357,13 @@ class WyuPortalApi {
       return FailureResult(failure);
     }
 
-    final uri = _resolveGymUri(path);
-    final extraHeaders = <String, String>{
-      'Referer': state.gymPcAccessUrl ?? 'https://ehall.wyu.edu.cn/',
-      'X-Requested-With': 'XMLHttpRequest',
-    };
-
-    // 先把这次请求登记进 API 日志缓冲，UI 端可以即时看到「in-flight」状态。
-    final logEntry = apiLogBuffer.begin(
-      method: 'POST',
-      url: uri.toString(),
-      label: 'Gym${_labelFromPath(path)}',
-      requestHeaders: extraHeaders,
-      requestBody: formFields,
-    );
-
     try {
+      final uri = _resolveGymUri(path);
+      final extraHeaders = <String, String>{
+        'Referer': state.gymPcAccessUrl ?? 'https://ehall.wyu.edu.cn/',
+        'X-Requested-With': 'XMLHttpRequest',
+      };
+
       final response = await _postFormWithHeaders(
         uri,
         formFields ?? const {},
@@ -382,12 +373,6 @@ class WyuPortalApi {
 
       if (response.statusCode != 200) {
         _logger.warn('[GYM] 请求失败 status=${response.statusCode}');
-        apiLogBuffer.complete(
-          logEntry,
-          statusCode: response.statusCode,
-          responseBody: response.body,
-          failureMessage: 'HTTP ${response.statusCode}',
-        );
         return FailureResult(
           BusinessFailure('体育馆接口请求失败，状态码 ${response.statusCode}。'),
         );
@@ -395,11 +380,6 @@ class WyuPortalApi {
 
       final raw = response.body.trim();
       if (raw.isEmpty) {
-        apiLogBuffer.complete(
-          logEntry,
-          statusCode: response.statusCode,
-          responseBody: '',
-        );
         return const Success(null);
       }
 
@@ -411,23 +391,12 @@ class WyuPortalApi {
         decoded = raw;
       }
       _logger.debug('[GYM] 请求成功 path=$path response=${_encodeForLog(decoded)}');
-      apiLogBuffer.complete(
-        logEntry,
-        statusCode: response.statusCode,
-        responseBody: decoded,
-      );
       return Success(decoded);
     } on DioException catch (error, stackTrace) {
       _logger.error(
         '[GYM] 体育馆接口请求失败 path=$path',
         error: error,
         stackTrace: stackTrace,
-      );
-      apiLogBuffer.complete(
-        logEntry,
-        statusCode: error.response?.statusCode,
-        responseBody: error.response?.data,
-        failureMessage: error.message ?? '$error',
       );
       return FailureResult(
         NetworkFailure('体育馆接口请求失败。', cause: error, stackTrace: stackTrace),
@@ -437,10 +406,6 @@ class WyuPortalApi {
         '[GYM] 体育馆接口解析失败 path=$path',
         error: error,
         stackTrace: stackTrace,
-      );
-      apiLogBuffer.complete(
-        logEntry,
-        failureMessage: '$error',
       );
       return FailureResult(
         ParsingFailure('体育馆接口响应解析失败。', cause: error, stackTrace: stackTrace),

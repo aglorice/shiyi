@@ -3,7 +3,9 @@ import 'package:flutter_auto_size_text/flutter_auto_size_text.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../app/settings/app_preferences.dart';
 import '../../../../app/settings/app_preferences_controller.dart';
+import '../../../../app/settings/schedule_timing_preference.dart';
 import '../../../../shared/widgets/app_snackbar.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/schedule_background.dart';
@@ -75,6 +77,7 @@ class _SchedulePageState extends ConsumerState<SchedulePage> {
               child: ScheduleBackground(
                 style: preferences.scheduleBackgroundStyle,
                 opacity: preferences.scheduleBackgroundOpacity,
+                customImagePath: preferences.customScheduleBackgroundPath,
               ),
             ),
             Column(
@@ -137,6 +140,7 @@ class _SchedulePageState extends ConsumerState<SchedulePage> {
                                                 snapshot,
                                                 entry,
                                               ),
+                                          preferences: preferences,
                                         ),
                                       ),
                                     ),
@@ -159,15 +163,23 @@ class _SchedulePageState extends ConsumerState<SchedulePage> {
                                 const _EmptyTodayState()
                               else
                                 ...todayEntries.map(
-                                  (entry) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 14),
-                                    child: _CourseTile(
-                                      entry: entry,
-                                      colorSeed: todayWeekday,
-                                      onTap: () =>
-                                          _openCourseDetail(snapshot, entry),
-                                    ),
-                                  ),
+                                  (entry) {
+                                    final times = _displayTimesFor(
+                                      entry,
+                                      preferences.scheduleTiming,
+                                    );
+                                    return Padding(
+                                      padding: const EdgeInsets.only(bottom: 14),
+                                      child: _CourseTile(
+                                        entry: entry,
+                                        colorSeed: todayWeekday,
+                                        onTap: () =>
+                                            _openCourseDetail(snapshot, entry),
+                                        displayStart: times?.$1,
+                                        displayEnd: times?.$2,
+                                      ),
+                                    );
+                                  },
                                 ),
                             ],
                           ),
@@ -408,12 +420,16 @@ class _SchedulePageState extends ConsumerState<SchedulePage> {
     ScheduleSnapshot snapshot,
     ScheduleEntry entry,
   ) async {
+    final preferences = ref.read(appPreferencesControllerProvider);
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (context) =>
-          _CourseDetailSheet(snapshot: snapshot, entry: entry),
+      builder: (context) => _CourseDetailSheet(
+        snapshot: snapshot,
+        entry: entry,
+        timing: preferences.scheduleTiming,
+      ),
     );
   }
 }
@@ -612,12 +628,14 @@ class _WeekTimetable extends StatelessWidget {
     required this.showAllWeeks,
     required this.showWeekends,
     required this.onOpenDetail,
+    required this.preferences,
   });
 
   final List<ScheduleEntry> entries;
   final bool showAllWeeks;
   final bool showWeekends;
   final ValueChanged<ScheduleEntry> onOpenDetail;
+  final AppPreferences preferences;
 
   @override
   Widget build(BuildContext context) {
@@ -1531,11 +1549,15 @@ class _CourseTile extends StatelessWidget {
     required this.entry,
     required this.colorSeed,
     required this.onTap,
+    this.displayStart,
+    this.displayEnd,
   });
 
   final ScheduleEntry entry;
   final int colorSeed;
   final VoidCallback onTap;
+  final String? displayStart;
+  final String? displayEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -1570,7 +1592,7 @@ class _CourseTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      entry.session.startTime,
+                      displayStart ?? entry.session.startTime,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w900,
                         color: accent,
@@ -1578,7 +1600,7 @@ class _CourseTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      entry.session.endTime,
+                      displayEnd ?? entry.session.endTime,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: accent.withValues(alpha: 0.88),
                         fontWeight: FontWeight.w600,
@@ -1749,10 +1771,15 @@ class _TodayHeader extends StatelessWidget {
 }
 
 class _CourseDetailSheet extends StatelessWidget {
-  const _CourseDetailSheet({required this.snapshot, required this.entry});
+  const _CourseDetailSheet({
+    required this.snapshot,
+    required this.entry,
+    required this.timing,
+  });
 
   final ScheduleSnapshot snapshot;
   final ScheduleEntry entry;
+  final ScheduleTimingPreference timing;
 
   @override
   Widget build(BuildContext context) {
@@ -1788,6 +1815,12 @@ class _CourseDetailSheet extends StatelessWidget {
                 children: [
                   _DetailTag(label: entry.session.weekdayLabel),
                   _DetailTag(label: entry.session.sectionLabel),
+                  if (_displayTimesFor(entry, timing) case (
+                    final start,
+                    final end,
+                  )) ...[
+                    _DetailTag(label: '$start - $end'),
+                  ],
                   if (!hasMultipleArrangements)
                     _DetailTag(label: entry.session.weekLabel),
                 ],
@@ -1998,4 +2031,21 @@ Color _accentForIndex(int index) {
     Color(0xFF5A64A5),
   ];
   return palette[(index - 1) % palette.length];
+}
+
+/// 当用户启用了「具体时间设置」时，把课程节次映射到 (startHm, endHm)。
+/// 返回 null 表示用 entry 自带的字符串。
+(String, String)? _displayTimesFor(
+  ScheduleEntry entry,
+  ScheduleTimingPreference timing,
+) {
+  if (!timing.enabled) return null;
+  final startSec = entry.session.startSection;
+  final endSec = entry.session.endSection;
+  if (startSec == null || endSec == null) return null;
+  final all = timing.resolveSectionTimes();
+  final s = all[startSec];
+  final e = all[endSec];
+  if (s == null || e == null) return null;
+  return (s.start, e.end);
 }

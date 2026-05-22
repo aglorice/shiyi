@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 
 import '../../core/error/failure.dart';
+import '../../core/logging/api_log_interceptor.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/result/result.dart';
 import '../../modules/school_news/domain/entities/school_news.dart';
@@ -36,7 +37,7 @@ class WyuSchoolNewsApi {
         validateStatus: (_) => true,
         headers: {'User-Agent': userAgent, 'Accept-Language': 'zh-CN,zh;q=0.9'},
       ),
-    );
+    )..interceptors.add(ApiLogInterceptor(label: 'SchoolNews'));
   }
 
   Future<Result<SchoolNewsPageData>> fetchPage({Uri? pageUri}) async {

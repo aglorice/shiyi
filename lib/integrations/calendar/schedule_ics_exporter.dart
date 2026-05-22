@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import '../../app/settings/schedule_timing_preference.dart';
 import '../../core/logging/app_logger.dart';
 import '../../modules/schedule/domain/entities/schedule_snapshot.dart';
 
@@ -18,16 +19,58 @@ class ScheduleIcsExporter {
 
   final AppLogger logger;
 
+  /// 五邑大学按节次的标准上下课时间。本科生教务返回的 schedule.startTime 是
+  /// "第N节" 这种文案，这里做一次映射兜底。
+  /// 第 1~5 节 上午；6~10 下午；11~13 晚上。
+  static const _sectionStartHm = <int, String>{
+    1: '08:00',
+    2: '08:50',
+    3: '09:50',
+    4: '10:40',
+    5: '11:30',
+    6: '14:00',
+    7: '14:50',
+    8: '15:50',
+    9: '16:40',
+    10: '17:30',
+    11: '19:00',
+    12: '19:50',
+    13: '20:50',
+  };
+  static const _sectionEndHm = <int, String>{
+    1: '08:45',
+    2: '09:35',
+    3: '10:35',
+    4: '11:25',
+    5: '12:15',
+    6: '14:45',
+    7: '15:35',
+    8: '16:35',
+    9: '17:25',
+    10: '18:15',
+    11: '19:45',
+    12: '20:35',
+    13: '21:35',
+  };
+
   /// 生成 ICS 字符串。返回 null 表示没有可导出的会话。
+  /// [skipped] 会被填充被跳过的原因列表，便于调用方提示用户。
+  /// [timing] 如果 enabled，则按用户自定义的节次时间表覆盖默认。
   String? buildIcs({
     required ScheduleSnapshot snapshot,
     required DateTime referenceDate,
     required int referenceWeek,
+    List<String>? skipped,
+    ScheduleTimingPreference? timing,
   }) {
     final entries = snapshot.entries;
     if (entries.isEmpty) {
       return null;
     }
+
+    final customTimes = (timing != null && timing.enabled)
+        ? timing.resolveSectionTimes()
+        : const <int, ({String start, String end})>{};
 
     final week1Monday = _mondayOfWeek1(
       referenceDate: referenceDate,
@@ -45,20 +88,34 @@ class ScheduleIcsExporter {
       ..writeln('METHOD:PUBLISH')
       ..writeln(_foldLine('X-WR-CALNAME:$termName 课表'));
 
+    var written = 0;
     for (final entry in entries) {
       final session = entry.session;
       final startWeek = session.weekRange.startWeek;
       final endWeek = session.weekRange.endWeek;
       if (endWeek < startWeek) {
+        skipped?.add('${entry.course.name}：weekRange 异常 ($startWeek-$endWeek)');
         continue;
       }
       final dayOfWeek = session.dayOfWeek.clamp(1, 7);
       final startDate = week1Monday.add(
         Duration(days: (startWeek - 1) * 7 + (dayOfWeek - 1)),
       );
-      final start = _composeDate(startDate, session.startTime);
-      final end = _composeDate(startDate, session.endTime);
+
+      final times = _resolveTimes(session, customTimes);
+      if (times == null) {
+        skipped?.add(
+          '${entry.course.name}：无法识别时间 '
+          '(start="${session.startTime}", end="${session.endTime}", '
+          'sec=${session.startSection}-${session.endSection})',
+        );
+        continue;
+      }
+
+      final start = _composeDate(startDate, times.$1);
+      final end = _composeDate(startDate, times.$2);
       if (start == null || end == null || !end.isAfter(start)) {
+        skipped?.add('${entry.course.name}：起讫时间组装失败');
         continue;
       }
 
@@ -90,16 +147,25 @@ class ScheduleIcsExporter {
         );
       }
       final location = session.location.fullName;
-      if (location.trim().isNotEmpty) {
+      if (location.trim().isNotEmpty && location != '地点待定') {
         buffer.writeln(_foldLine('LOCATION:${_escape(location)}'));
       }
       if (count > 1) {
         buffer.writeln('RRULE:FREQ=WEEKLY;COUNT=$count');
       }
       buffer.writeln('END:VEVENT');
+      written++;
     }
 
     buffer.writeln('END:VCALENDAR');
+
+    if (written == 0) {
+      logger.warn(
+        '[ICS] 一个事件都没写入。entries=${entries.length} '
+        'skipped=${skipped?.length ?? 0}',
+      );
+      return null;
+    }
     return buffer.toString();
   }
 
@@ -117,6 +183,55 @@ class ScheduleIcsExporter {
       '[ICS] 已生成 ${file.path}（事件数=${ics.split('BEGIN:VEVENT').length - 1}）',
     );
     return file;
+  }
+
+  /// 解析 [session] 起止时间，返回 (start "HH:mm", end "HH:mm")。
+  /// 优先级：
+  /// 1. [customTimes] 命中（来自用户自定义时间表）；
+  /// 2. session.startTime 已经是 HH:mm；
+  /// 3. session 提供 startSection/endSection，去 [_sectionStartHm] 表里查；
+  /// 4. session.startTime 形如「第N节」，用正则抽出 N 再查表。
+  (String, String)? _resolveTimes(
+    ClassSession session,
+    Map<int, ({String start, String end})> customTimes,
+  ) {
+    final startSec = session.startSection ?? _matchSectionNumber(session.startTime);
+    final endSec = session.endSection ?? _matchSectionNumber(session.endTime);
+
+    if (customTimes.isNotEmpty) {
+      if (startSec != null && endSec != null) {
+        final s = customTimes[startSec];
+        final e = customTimes[endSec];
+        if (s != null && e != null) return (s.start, e.end);
+      }
+    }
+
+    final hmStart = _matchHhmm(session.startTime);
+    final hmEnd = _matchHhmm(session.endTime);
+    if (hmStart != null && hmEnd != null) {
+      return (hmStart, hmEnd);
+    }
+
+    if (startSec != null && endSec != null) {
+      final s = _sectionStartHm[startSec];
+      final e = _sectionEndHm[endSec];
+      if (s != null && e != null) return (s, e);
+    }
+    return null;
+  }
+
+  String? _matchHhmm(String value) {
+    final match = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(value);
+    if (match == null) return null;
+    final h = int.tryParse(match.group(1)!) ?? 0;
+    final m = int.tryParse(match.group(2)!) ?? 0;
+    return '${_d2(h)}:${_d2(m)}';
+  }
+
+  int? _matchSectionNumber(String value) {
+    final match = RegExp(r'(\d+)').firstMatch(value);
+    if (match == null) return null;
+    return int.tryParse(match.group(1)!);
   }
 
   /// 学期第 1 周周一。

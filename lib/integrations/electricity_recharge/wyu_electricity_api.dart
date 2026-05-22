@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../core/error/failure.dart';
+import '../../core/logging/api_log_interceptor.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/result/result.dart';
 import '../../modules/electricity/domain/entities/electricity_dashboard.dart';
@@ -22,7 +23,7 @@ class WyuElectricityApi {
            validateStatus: (_) => true,
            headers: {'User-Agent': userAgent},
          ),
-       );
+       )..interceptors.add(ApiLogInterceptor(label: 'Electricity'));
 
   final WyuElectricityParser _parser;
   final AppLogger _logger;

@@ -22,12 +22,10 @@ class ProfilePage extends ConsumerWidget {
 
     return ListView(
       padding: const EdgeInsets.only(
-        top: 4,
+        top: AppSpacing.lg,
         bottom: AppSpacing.pageBottomGapWithNav,
       ),
       children: [
-        const PageHeader(title: '我'),
-        const SizedBox(height: 4),
         _IdentityRow(session: session),
         PageSection(
           title: '偏好',

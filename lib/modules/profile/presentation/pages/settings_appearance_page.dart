@@ -16,20 +16,26 @@ class SettingsAppearancePage extends ConsumerWidget {
     final controller = ref.read(appPreferencesControllerProvider.notifier);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('外观')),
+      appBar: AppBar(title: const Text('外观'), centerTitle: true),
       body: ListView(
         padding: const EdgeInsets.only(bottom: AppSpacing.pageBottomGap),
         children: [
           PageSection(
-            title: '显示模式',
+            title: '主题模式',
+            divider: false,
             children: [
-              SettingSwitchTile(
-                icon: Icons.dark_mode_outlined,
-                title: '深色主题',
-                subtitle: '晚上或低亮度环境更耐看',
-                value: preferences.darkMode,
-                onChanged: controller.setDarkMode,
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                child: _ThemeModeRow(
+                  current: preferences.themeMode,
+                  onChanged: controller.setThemeMode,
+                ),
               ),
+            ],
+          ),
+          PageSection(
+            title: '阅读体验',
+            children: [
               SettingSwitchTile(
                 icon: Icons.contrast_outlined,
                 title: '增强对比',
@@ -40,7 +46,7 @@ class SettingsAppearancePage extends ConsumerWidget {
               SettingSwitchTile(
                 icon: Icons.view_compact_alt_outlined,
                 title: '紧凑布局',
-                subtitle: '让页面信息密度更高',
+                subtitle: '页面信息密度更高，列表更紧',
                 value: preferences.compactMode,
                 onChanged: controller.setCompactMode,
               ),
@@ -52,9 +58,8 @@ class SettingsAppearancePage extends ConsumerWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-                child: Wrap(
-                  spacing: AppSpacing.sm,
-                  runSpacing: AppSpacing.sm,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     for (final preset in AppThemePreset.values)
                       _ThemeDot(
@@ -63,16 +68,6 @@ class SettingsAppearancePage extends ConsumerWidget {
                         onTap: () => controller.setThemePreset(preset),
                       ),
                   ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 4, bottom: AppSpacing.sm),
-                child: Text(
-                  preferences.themePreset.description,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color:
-                            Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
                 ),
               ),
             ],
@@ -100,16 +95,6 @@ class SettingsAppearancePage extends ConsumerWidget {
                   },
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                child: Text(
-                  preferences.fontPreset.description,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color:
-                            Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                ),
-              ),
             ],
           ),
           PageSection(
@@ -127,16 +112,97 @@ class SettingsAppearancePage extends ConsumerWidget {
                   onChanged: controller.setFontScale,
                 ),
               ),
-              SettingBlock(
-                padding: const EdgeInsets.only(top: 4, bottom: AppSpacing.sm),
-                child: Text(
-                  '示例：今天没有早八，正好把课表导出到日历看看。',
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
-              ),
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 三栏式 chip：浅色 / 深色 / 跟随系统。
+class _ThemeModeRow extends StatelessWidget {
+  const _ThemeModeRow({required this.current, required this.onChanged});
+
+  final AppThemeMode current;
+  final ValueChanged<AppThemeMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        for (var i = 0; i < AppThemeMode.values.length; i++) ...[
+          if (i > 0) const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: _ThemeModeCard(
+              mode: AppThemeMode.values[i],
+              selected: current == AppThemeMode.values[i],
+              onTap: () => onChanged(AppThemeMode.values[i]),
+              theme: theme,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ThemeModeCard extends StatelessWidget {
+  const _ThemeModeCard({
+    required this.mode,
+    required this.selected,
+    required this.onTap,
+    required this.theme,
+  });
+
+  final AppThemeMode mode;
+  final bool selected;
+  final VoidCallback onTap;
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDarkPreview = mode == AppThemeMode.dark;
+    final previewBg = isDarkPreview
+        ? const Color(0xFF1B1A1A)
+        : const Color(0xFFFAF8F6);
+    final previewFg = isDarkPreview ? Colors.white : Colors.black;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.sm + 2),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(
+            color: selected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Container(
+              height: 48,
+              decoration: BoxDecoration(
+                color: previewBg,
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+              ),
+              alignment: Alignment.center,
+              child: Icon(mode.icon, size: 20, color: previewFg),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              mode.label,
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -160,29 +226,28 @@ class _ThemeDot extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppRadius.pill),
       child: Padding(
-        padding: const EdgeInsets.all(2),
+        padding: const EdgeInsets.all(AppSpacing.xxs),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 36,
-              height: 36,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: preset.seedColor,
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: selected
                       ? theme.colorScheme.onSurface
-                      : theme.colorScheme.outlineVariant
-                          .withValues(alpha: 0.55),
-                  width: selected ? 2 : 1,
+                      : Colors.transparent,
+                  width: selected ? 2.5 : 0,
                 ),
               ),
               child: selected
                   ? const Center(
                       child: Icon(
                         Icons.check_rounded,
-                        size: 18,
+                        size: 20,
                         color: Colors.white,
                       ),
                     )

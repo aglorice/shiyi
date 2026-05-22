@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 
 import '../../core/error/failure.dart';
+import '../../core/logging/api_log_interceptor.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/result/result.dart';
 
@@ -56,7 +57,7 @@ class GitHubReleaseApi {
     : _logger = logger,
       _dio =
           dio ??
-          Dio(
+          (Dio(
             BaseOptions(
               connectTimeout: const Duration(seconds: 20),
               receiveTimeout: const Duration(seconds: 60),
@@ -67,7 +68,7 @@ class GitHubReleaseApi {
                 'User-Agent': 'uni_yi',
               },
             ),
-          );
+          )..interceptors.add(ApiLogInterceptor(label: 'GitHub')));
 
   final AppLogger _logger;
   final Dio _dio;

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -10,29 +11,69 @@ class ScheduleBackground extends StatelessWidget {
     required this.style,
     required this.opacity,
     this.borderRadius = BorderRadius.zero,
+    this.customImagePath,
   });
 
   final ScheduleBackgroundStyle style;
   final double opacity;
   final BorderRadius borderRadius;
 
+  /// 用户自定义的本地图片路径。非空且 [opacity] > 0 时优先用图片，
+  /// [style] 当作"图片底纹之上叠加什么效果"被忽略。
+  final String? customImagePath;
+
   @override
   Widget build(BuildContext context) {
-    if (style == ScheduleBackgroundStyle.clean || opacity <= 0) {
+    if (opacity <= 0) {
+      return const SizedBox.expand();
+    }
+
+    final hasCustom = customImagePath != null && customImagePath!.isNotEmpty;
+
+    if (style == ScheduleBackgroundStyle.clean && !hasCustom) {
       return const SizedBox.expand();
     }
 
     return IgnorePointer(
       child: ClipRRect(
         borderRadius: borderRadius,
-        child: CustomPaint(
-          painter: _ScheduleBackgroundPainter(
-            style: style,
-            opacity: opacity,
-            colorScheme: Theme.of(context).colorScheme,
-          ),
-          child: const SizedBox.expand(),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (hasCustom)
+              _CustomBgImage(
+                path: customImagePath!,
+                opacity: opacity.clamp(0.0, 1.0),
+              )
+            else
+              CustomPaint(
+                painter: _ScheduleBackgroundPainter(
+                  style: style,
+                  opacity: opacity,
+                  colorScheme: Theme.of(context).colorScheme,
+                ),
+              ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+class _CustomBgImage extends StatelessWidget {
+  const _CustomBgImage({required this.path, required this.opacity});
+
+  final String path;
+  final double opacity;
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: opacity.clamp(0.0, 1.0),
+      child: Image.file(
+        File(path),
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => const SizedBox.expand(),
       ),
     );
   }

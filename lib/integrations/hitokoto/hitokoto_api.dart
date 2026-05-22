@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../core/error/failure.dart';
+import '../../core/logging/api_log_interceptor.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/result/result.dart';
 import '../../modules/home/domain/entities/hitokoto_quote.dart';
@@ -21,7 +22,7 @@ class HitokotoApi {
         responseType: ResponseType.json,
         headers: {'User-Agent': userAgent},
       ),
-    );
+    )..interceptors.add(ApiLogInterceptor(label: 'Hitokoto'));
   }
 
   Future<Result<HitokotoQuote>> fetchQuote() async {

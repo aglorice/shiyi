@@ -4,22 +4,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/app_links.dart';
-import '../../../../shared/widgets/constrained_body.dart';
+import '../../../../app/theme/design_tokens.dart';
 import '../../../../shared/widgets/app_snackbar.dart';
-import '../../../../shared/widgets/surface_card.dart';
+import '../../../../shared/widgets/page_section.dart';
 import '../controllers/app_update_controller.dart';
+import '../widgets/settings_widgets.dart';
 
+/// 关于应用页：极简留白版。
+/// 顶部 logo + 名字 + 版本号，下面三组：功能 / 信息 / 链接。
+/// 不再用渐变 hero 和叠卡的层级。
 class AboutAppPage extends ConsumerWidget {
   const AboutAppPage({super.key});
 
-  static const _featureItems = [
-    _AboutFeatureItem(Icons.calendar_today_rounded, '课表'),
-    _AboutFeatureItem(Icons.school_outlined, '成绩'),
-    _AboutFeatureItem(Icons.assignment_rounded, '考试'),
-    _AboutFeatureItem(Icons.bolt_rounded, '电量'),
-    _AboutFeatureItem(Icons.notifications_rounded, '通知'),
-    _AboutFeatureItem(Icons.grid_view_rounded, '服务'),
-    _AboutFeatureItem(Icons.sports_tennis_rounded, '场馆'),
+  static const _features = <_AboutFeature>[
+    _AboutFeature(Icons.calendar_today_rounded, '课表'),
+    _AboutFeature(Icons.school_outlined, '成绩'),
+    _AboutFeature(Icons.assignment_outlined, '考试'),
+    _AboutFeature(Icons.bolt_outlined, '电量'),
+    _AboutFeature(Icons.notifications_none_rounded, '通知'),
+    _AboutFeature(Icons.grid_view_rounded, '服务'),
+    _AboutFeature(Icons.sports_tennis_rounded, '场馆'),
   ];
 
   @override
@@ -30,69 +34,79 @@ class AboutAppPage extends ConsumerWidget {
         (value) => value.maybeWhen(data: (data) => data, orElse: () => null),
       ),
     );
-    final useWideLayout = MediaQuery.sizeOf(context).width >= 860;
     final versionLabel = appInfo?.versionLabel ?? '读取中';
-    final packageName = appInfo?.packageName ?? 'shiyi';
+    final packageName = appInfo?.packageName ?? '';
     final browserRoute = Uri(
       path: '/browser',
       queryParameters: {'title': 'GitHub', 'url': appGitHubRepositoryUrl},
     ).toString();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('关于应用')),
-      body: ConstrainedBody(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-          children: [
-            _AboutHero(versionLabel: versionLabel, packageName: packageName),
-            const SizedBox(height: 16),
-            if (useWideLayout)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 11,
-                    child: _FeaturesPanel(
-                      titleStyle: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 9,
-                    child: Column(
-                      children: [
-                        _InfoPanel(
-                          versionLabel: versionLabel,
-                          packageName: packageName,
-                        ),
-                        const SizedBox(height: 16),
-                        _GitHubPanel(
-                          onOpen: () => context.push(browserRoute),
-                          onCopy: () => _copyRepositoryLink(context),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              )
-            else ...[
-              _FeaturesPanel(
-                titleStyle: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w900,
+      appBar: AppBar(title: const Text('关于'), centerTitle: true),
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: AppSpacing.pageBottomGap),
+        children: [
+          const SizedBox(height: AppSpacing.lg),
+          _AppIntro(versionLabel: versionLabel),
+          const SizedBox(height: AppSpacing.xl),
+          PageSection(
+            title: '能做什么',
+            divider: false,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                child: Wrap(
+                  spacing: 14,
+                  runSpacing: AppSpacing.md,
+                  children: [
+                    for (final feature in _features) _FeatureDot(feature: feature),
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
-              _InfoPanel(versionLabel: versionLabel, packageName: packageName),
-              const SizedBox(height: 16),
-              _GitHubPanel(
-                onOpen: () => context.push(browserRoute),
-                onCopy: () => _copyRepositoryLink(context),
+            ],
+          ),
+          PageSection(
+            title: '应用信息',
+            children: [
+              _InfoRow(label: '版本号', value: versionLabel),
+              if (packageName.isNotEmpty)
+                _InfoRow(label: '包名', value: packageName),
+              _InfoRow(label: '协议', value: 'MIT'),
+            ],
+          ),
+          PageSection(
+            title: '项目',
+            children: [
+              SettingActionTile(
+                icon: Icons.code_rounded,
+                title: '查看 GitHub 源码',
+                subtitle: appGitHubRepositoryUrl,
+                onTap: () => context.push(browserRoute),
+              ),
+              SettingActionTile(
+                icon: Icons.copy_rounded,
+                title: '复制仓库链接',
+                onTap: () => _copyRepositoryLink(context),
+              ),
+              SettingActionTile(
+                icon: Icons.bug_report_outlined,
+                title: '反馈问题',
+                subtitle: '在 GitHub 上提 Issue',
+                onTap: () => context.push(browserRoute),
               ),
             ],
-          ],
-        ),
+          ),
+          const SizedBox(height: AppSpacing.xxl),
+          Center(
+            child: Text(
+              'Made with care · 拾邑',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+        ],
       ),
     );
   }
@@ -111,129 +125,53 @@ class AboutAppPage extends ConsumerWidget {
   }
 }
 
-class _AboutHero extends StatelessWidget {
-  const _AboutHero({required this.versionLabel, required this.packageName});
+/// 顶部「应用名 + 版本」介绍块。logo 用 primary 圆角方块占位，无渐变。
+class _AppIntro extends StatelessWidget {
+  const _AppIntro({required this.versionLabel});
 
   final String versionLabel;
-  final String packageName;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(30),
-        gradient: LinearGradient(
-          colors: [
-            colorScheme.primary,
-            Color.lerp(colorScheme.primary, colorScheme.tertiary, 0.58) ??
-                colorScheme.tertiary,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Stack(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.pageH),
+      child: Row(
         children: [
-          Positioned(
-            top: -36,
-            right: -20,
-            child: Container(
-              width: 140,
-              height: 140,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.09),
-                shape: BoxShape.circle,
-              ),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            child: Image.asset(
+              'assets/logo/pixel_cat_logo_1024.png',
+              width: 64,
+              height: 64,
+              fit: BoxFit.cover,
             ),
           ),
-          Positioned(
-            bottom: -34,
-            left: -14,
-            child: Container(
-              width: 110,
-              height: 110,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.08),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.14),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          'ABOUT 拾邑',
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.6,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        '拾邑',
-                        style: theme.textTheme.headlineMedium?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '五邑大学校园助手',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          color: Colors.white.withValues(alpha: 0.92),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          _HeroChip(label: 'v$versionLabel'),
-                          _HeroChip(label: packageName),
-                        ],
-                      ),
-                    ],
+                Text(
+                  '拾邑',
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    height: 1.1,
                   ),
                 ),
-                const SizedBox(width: 16),
-                Container(
-                  width: 88,
-                  height: 88,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.18),
-                    ),
+                const SizedBox(height: 4),
+                Text(
+                  '一个收纳大学生活的随身助理',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: Image.asset(
-                      'assets/logo/pixel_cat_logo_1024.png',
-                      fit: BoxFit.cover,
-                    ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'v$versionLabel',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
               ],
@@ -245,116 +183,50 @@ class _AboutHero extends StatelessWidget {
   }
 }
 
-class _HeroChip extends StatelessWidget {
-  const _HeroChip({required this.label});
+class _FeatureDot extends StatelessWidget {
+  const _FeatureDot({required this.feature});
 
+  final _AboutFeature feature;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SizedBox(
+      width: 64,
+      child: Column(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
+            child: Icon(
+              feature.icon,
+              size: 22,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            feature.label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AboutFeature {
+  const _AboutFeature(this.icon, this.label);
+
+  final IconData icon;
   final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
-class _FeaturesPanel extends StatelessWidget {
-  const _FeaturesPanel({required this.titleStyle});
-
-  final TextStyle? titleStyle;
-
-  @override
-  Widget build(BuildContext context) {
-    return SurfaceCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('核心能力', style: titleStyle),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: AboutAppPage._featureItems
-                .map((item) => _FeatureBadge(item: item))
-                .toList(),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FeatureBadge extends StatelessWidget {
-  const _FeatureBadge({required this.item});
-
-  final _AboutFeatureItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(item.icon, size: 18, color: colorScheme.primary),
-          const SizedBox(width: 8),
-          Text(
-            item.label,
-            style: Theme.of(
-              context,
-            ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InfoPanel extends StatelessWidget {
-  const _InfoPanel({required this.versionLabel, required this.packageName});
-
-  final String versionLabel;
-  final String packageName;
-
-  @override
-  Widget build(BuildContext context) {
-    return SurfaceCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '应用信息',
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 14),
-          _InfoRow(label: '名称', value: '拾邑'),
-          const SizedBox(height: 12),
-          _InfoRow(label: '版本', value: versionLabel),
-          const SizedBox(height: 12),
-          _InfoRow(label: '包名', value: packageName),
-        ],
-      ),
-    );
-  }
 }
 
 class _InfoRow extends StatelessWidget {
@@ -365,114 +237,28 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 44,
-          child: Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            value,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _GitHubPanel extends StatelessWidget {
-  const _GitHubPanel({required this.onOpen, required this.onCopy});
-
-  final VoidCallback onOpen;
-  final VoidCallback onCopy;
-
-  @override
-  Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return SurfaceCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHigh,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(Icons.code_rounded, color: colorScheme.onSurface),
+          Expanded(
+            child: Text(
+              label,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                fontWeight: FontWeight.w600,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'GitHub',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '$appGitHubOwner/$appGitHubRepo',
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w900,
             ),
           ),
-          const SizedBox(height: 6),
           Text(
-            appGitHubRepositoryUrl,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              height: 1.45,
+            value,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
-          ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: onOpen,
-                  icon: const Icon(Icons.open_in_new_rounded),
-                  label: const Text('查看仓库'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              IconButton.filledTonal(
-                tooltip: '复制链接',
-                onPressed: onCopy,
-                icon: const Icon(Icons.copy_rounded),
-              ),
-            ],
           ),
         ],
       ),
     );
   }
-}
-
-class _AboutFeatureItem {
-  const _AboutFeatureItem(this.icon, this.label);
-
-  final IconData icon;
-  final String label;
 }
