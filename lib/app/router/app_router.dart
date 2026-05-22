@@ -20,6 +20,11 @@ import '../../modules/notices/presentation/pages/notice_detail_page.dart';
 import '../../modules/notices/presentation/pages/notices_page.dart';
 import '../../modules/profile/presentation/pages/about_app_page.dart';
 import '../../modules/profile/presentation/pages/profile_page.dart';
+import '../../modules/profile/presentation/pages/settings_appearance_page.dart';
+import '../../modules/profile/presentation/pages/settings_logs_page.dart';
+import '../../modules/profile/presentation/pages/settings_schedule_export_page.dart';
+import '../../modules/profile/presentation/pages/settings_schedule_page.dart';
+import '../../modules/profile/presentation/pages/settings_storage_page.dart';
 import '../../modules/schedule/presentation/pages/schedule_page.dart';
 import '../../modules/school_news/domain/entities/school_news.dart';
 import '../../modules/school_news/presentation/pages/school_news_detail_page.dart';
@@ -79,6 +84,30 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/about',
         builder: (context, state) => const AboutAppPage(),
+      ),
+      GoRoute(
+        path: '/settings/appearance',
+        builder: (context, state) => const SettingsAppearancePage(),
+      ),
+      GoRoute(
+        path: '/settings/schedule',
+        builder: (context, state) => const SettingsSchedulePage(),
+      ),
+      GoRoute(
+        path: '/settings/gym',
+        builder: (context, state) => const GymBookingProfilePage(),
+      ),
+      GoRoute(
+        path: '/settings/storage',
+        builder: (context, state) => const SettingsStoragePage(),
+      ),
+      GoRoute(
+        path: '/settings/schedule-export',
+        builder: (context, state) => const SettingsScheduleExportPage(),
+      ),
+      GoRoute(
+        path: '/settings/logs',
+        builder: (context, state) => const SettingsLogsPage(),
       ),
       GoRoute(
         path: '/browser',

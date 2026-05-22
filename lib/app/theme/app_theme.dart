@@ -38,11 +38,17 @@ class AppTheme {
       preferences: preferences,
       colorScheme: colorScheme,
     );
-    final cornerRadius = preferences.compactMode ? 22.0 : 30.0;
-    final outlinedRadius = preferences.compactMode ? 18.0 : 22.0;
+    final cornerRadius = preferences.compactMode ? 18.0 : 22.0;
+    final outlinedRadius = preferences.compactMode ? 16.0 : 20.0;
+    // 暖白底（小红书系）。深色用更深的近黑，避免灰蒙蒙。
     final scaffoldBackground = brightness == Brightness.light
-        ? _mix(colorScheme.surface, colorScheme.primary, 0.03)
-        : const Color(0xFF091215);
+        ? const Color(0xFFFAF8F6)
+        : const Color(0xFF0F0E0E);
+    // 卡片底色：浅色下用纯白拉开层级；深色下用稍亮一点的灰，
+    // 避免和 scaffold 完全融合显得"没层次"。
+    final cardColor = brightness == Brightness.light
+        ? Colors.white
+        : const Color(0xFF181718);
 
     return baseTheme.copyWith(
       scaffoldBackgroundColor: scaffoldBackground,
@@ -54,31 +60,30 @@ class AppTheme {
         scrolledUnderElevation: 0,
         shadowColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
-        centerTitle: true,
+        centerTitle: false,
         titleTextStyle: textTheme.titleLarge?.copyWith(
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w800,
         ),
       ),
       cardTheme: CardThemeData(
-        color: brightness == Brightness.light
-            ? Colors.white
-            : colorScheme.surfaceContainerLow,
+        color: cardColor,
         elevation: 0,
         margin: EdgeInsets.zero,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(cornerRadius),
+          // 极淡的描边，几乎只留"内容存在感"，避免卡里嵌卡的视觉噪音
           side: BorderSide(
             color: preferences.highContrast
                 ? colorScheme.outline
-                : colorScheme.outlineVariant,
+                : colorScheme.outlineVariant.withValues(alpha: 0.45),
           ),
         ),
       ),
       dividerTheme: DividerThemeData(
-        color: colorScheme.outlineVariant,
+        color: colorScheme.outlineVariant.withValues(alpha: 0.6),
         space: 1,
-        thickness: 1,
+        thickness: 0.6,
       ),
       listTileTheme: ListTileThemeData(
         dense: preferences.compactMode,
@@ -98,11 +103,15 @@ class AppTheme {
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(outlinedRadius),
-          borderSide: BorderSide(color: colorScheme.outlineVariant),
+          borderSide: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(outlinedRadius),
-          borderSide: BorderSide(color: colorScheme.outlineVariant),
+          borderSide: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(outlinedRadius),
@@ -111,14 +120,14 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: brightness == Brightness.light
-            ? Colors.white
-            : colorScheme.surfaceContainerLow,
+            ? Colors.white.withValues(alpha: 0.94)
+            : const Color(0xFF181718).withValues(alpha: 0.94),
         indicatorColor: _mix(
           colorScheme.primaryContainer,
           colorScheme.primary,
-          0.12,
-        ),
-        height: preferences.compactMode ? 72 : 78,
+          0.08,
+        ).withValues(alpha: 0.5),
+        height: preferences.compactMode ? 60 : 66,
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return textTheme.labelMedium?.copyWith(
@@ -166,8 +175,10 @@ class AppTheme {
       ),
       chipTheme: baseTheme.chipTheme.copyWith(
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: colorScheme.outlineVariant),
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+          ),
         ),
         labelStyle: textTheme.labelLarge,
       ),
@@ -196,10 +207,12 @@ class AppTheme {
                 : colorScheme.surfaceContainerLow;
           }),
           side: WidgetStatePropertyAll(
-            BorderSide(color: colorScheme.outlineVariant),
+            BorderSide(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+            ),
           ),
           shape: WidgetStatePropertyAll(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           ),
           padding: WidgetStatePropertyAll(
             EdgeInsets.symmetric(

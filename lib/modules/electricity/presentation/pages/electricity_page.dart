@@ -197,79 +197,101 @@ class _BalanceHeroCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    // 保持暖橙作为电费模块品牌色，但在深色下回落到 tertiaryContainer，
+    // 不再让浅色硬编码 #FFF0CF 在深色背景上显得发灰。
+    final gradientFrom =
+        isDark ? theme.colorScheme.tertiaryContainer : const Color(0xFFFFF0CF);
+    final gradientTo = isDark
+        ? Color.lerp(
+                theme.colorScheme.tertiaryContainer,
+                theme.colorScheme.surface,
+                0.4,
+              ) ??
+              theme.colorScheme.tertiaryContainer
+        : const Color(0xFFFFF8EA);
+    const accent = Color(0xFFD28A19);
+    final accentColor = isDark ? theme.colorScheme.tertiary : accent;
+    final foreground =
+        isDark ? theme.colorScheme.onTertiaryContainer : Colors.black;
 
     return SurfaceCard(
       padding: const EdgeInsets.all(0),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFFF0CF), Color(0xFFFFF8EA)],
+          gradient: LinearGradient(
+            colors: [gradientFrom, gradientTo],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
         ),
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD28A19).withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(16),
+        child: DefaultTextStyle.merge(
+          style: TextStyle(color: foreground),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: accentColor.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(
+                      Icons.bolt_rounded,
+                      color: accentColor,
+                      size: 24,
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.bolt_rounded,
-                    color: Color(0xFFD28A19),
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        dashboard.binding.displayLabel,
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w900,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          dashboard.binding.displayLabel,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            color: foreground,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        dashboard.balance.apartName.isEmpty
-                            ? dashboard.balance.schoolName
-                            : '${dashboard.balance.schoolName} · ${dashboard.balance.apartName}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+                        const SizedBox(height: 4),
+                        Text(
+                          dashboard.balance.apartName.isEmpty
+                              ? dashboard.balance.schoolName
+                              : '${dashboard.balance.schoolName} · ${dashboard.balance.apartName}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: foreground.withValues(alpha: 0.72),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
+                ],
+              ),
+              const SizedBox(height: 22),
+              Text(
+                '${dashboard.balance.remainingKwh.toStringAsFixed(2)} 度',
+                style: theme.textTheme.displaySmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: accentColor,
+                  letterSpacing: -0.8,
                 ),
-              ],
-            ),
-            const SizedBox(height: 22),
-            Text(
-              '${dashboard.balance.remainingKwh.toStringAsFixed(2)} 度',
-              style: theme.textTheme.displaySmall?.copyWith(
-                fontWeight: FontWeight.w900,
-                color: const Color(0xFFD28A19),
-                letterSpacing: -0.8,
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '最近更新 ${DateFormat('yyyy-MM-dd HH:mm').format(dashboard.balance.updatedAt)}',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+              const SizedBox(height: 8),
+              Text(
+                '最近更新 ${DateFormat('yyyy-MM-dd HH:mm').format(dashboard.balance.updatedAt)}',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: foreground.withValues(alpha: 0.72),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
