@@ -28,6 +28,7 @@ class SettingsScheduleExportPage extends ConsumerStatefulWidget {
 class _SettingsScheduleExportPageState
     extends ConsumerState<SettingsScheduleExportPage> {
   bool _busy = false;
+  bool _onlyFuture = true;
 
   @override
   Widget build(BuildContext context) {
@@ -85,7 +86,13 @@ class _SettingsScheduleExportPageState
                   _MetaRow(
                     icon: Icons.repeat_rounded,
                     label: '重复规则',
-                    value: '每周一次',
+                    value: '识别单/双周与跳周',
+                  ),
+                  _ToggleRow(
+                    icon: Icons.skip_next_rounded,
+                    label: '只导出今天之后的课',
+                    value: _onlyFuture,
+                    onChanged: (v) => setState(() => _onlyFuture = v),
                   ),
                 ],
               ),
@@ -177,6 +184,7 @@ class _SettingsScheduleExportPageState
         referenceWeek: week,
         skipped: skipped,
         timing: preferences.scheduleTiming,
+        onlyFutureFrom: _onlyFuture ? _startOfThisWeek() : null,
       );
       if (ics == null) {
         if (mounted) {
@@ -221,6 +229,15 @@ class _SettingsScheduleExportPageState
         setState(() => _busy = false);
       }
     }
+  }
+
+  /// 本周一 00:00。导出"今天之后的课"用这个当 cutoff，
+  /// 这样本周已经过去的几天（如周一/周二）的课也会保留下来。
+  DateTime _startOfThisWeek() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    // weekday: 1=周一, 7=周日
+    return today.subtract(Duration(days: today.weekday - 1));
   }
 }
 
@@ -358,6 +375,43 @@ class _MetaRow extends StatelessWidget {
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ToggleRow extends StatelessWidget {
+  const _ToggleRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: theme.colorScheme.onSurface),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Text(
+              label,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Switch(value: value, onChanged: onChanged),
         ],
       ),
     );

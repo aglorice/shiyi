@@ -56,12 +56,15 @@ class ScheduleIcsExporter {
   /// 生成 ICS 字符串。返回 null 表示没有可导出的会话。
   /// [skipped] 会被填充被跳过的原因列表，便于调用方提示用户。
   /// [timing] 如果 enabled，则按用户自定义的节次时间表覆盖默认。
+  /// [onlyFutureFrom] 给定时只保留实际开始时间晚于该时刻的课次，
+  /// 默认 null 表示导出整学期。
   String? buildIcs({
     required ScheduleSnapshot snapshot,
     required DateTime referenceDate,
     required int referenceWeek,
     List<String>? skipped,
     ScheduleTimingPreference? timing,
+    DateTime? onlyFutureFrom,
   }) {
     final entries = snapshot.entries;
     if (entries.isEmpty) {
@@ -71,6 +74,7 @@ class ScheduleIcsExporter {
     final customTimes = (timing != null && timing.enabled)
         ? timing.resolveSectionTimes()
         : const <int, ({String start, String end})>{};
+    final cutoff = onlyFutureFrom;
 
     final week1Monday = _mondayOfWeek1(
       referenceDate: referenceDate,
@@ -91,16 +95,24 @@ class ScheduleIcsExporter {
     var written = 0;
     for (final entry in entries) {
       final session = entry.session;
-      final startWeek = session.weekRange.startWeek;
-      final endWeek = session.weekRange.endWeek;
-      if (endWeek < startWeek) {
-        skipped?.add('${entry.course.name}：weekRange 异常 ($startWeek-$endWeek)');
+      var weeks = session.effectiveWeeks;
+      // 1. 过滤掉已经过去的课次（启用 onlyFutureFrom 时）。
+      if (cutoff != null) {
+        weeks = _filterFutureWeeks(
+          weeks: weeks,
+          dayOfWeek: session.dayOfWeek.clamp(1, 7),
+          week1Monday: week1Monday,
+          cutoff: cutoff,
+        );
+      }
+      if (weeks.isEmpty) {
+        skipped?.add(
+          '${entry.course.name}：'
+          '${cutoff == null ? "未识别出周次" : "今天之后已无课次"}',
+        );
         continue;
       }
       final dayOfWeek = session.dayOfWeek.clamp(1, 7);
-      final startDate = week1Monday.add(
-        Duration(days: (startWeek - 1) * 7 + (dayOfWeek - 1)),
-      );
 
       final times = _resolveTimes(session, customTimes);
       if (times == null) {
@@ -112,25 +124,6 @@ class ScheduleIcsExporter {
         continue;
       }
 
-      final start = _composeDate(startDate, times.$1);
-      final end = _composeDate(startDate, times.$2);
-      if (start == null || end == null || !end.isAfter(start)) {
-        skipped?.add('${entry.course.name}：起讫时间组装失败');
-        continue;
-      }
-
-      final count = endWeek - startWeek + 1;
-      final uid = '${entry.course.id}-w$startWeek-d$dayOfWeek-$termId'
-          '@uni-yi';
-
-      buffer
-        ..writeln('BEGIN:VEVENT')
-        ..writeln('UID:$uid')
-        ..writeln('DTSTAMP:$stamp')
-        ..writeln('DTSTART:${_formatLocal(start)}')
-        ..writeln('DTEND:${_formatLocal(end)}')
-        ..writeln(_foldLine('SUMMARY:${_escape(entry.course.name)}'));
-
       final descriptionParts = <String>[
         if (entry.course.teacher.trim().isNotEmpty)
           '教师 ${entry.course.teacher}',
@@ -139,22 +132,64 @@ class ScheduleIcsExporter {
         if (entry.course.note?.trim().isNotEmpty ?? false)
           '备注 ${entry.course.note}',
       ];
-      if (descriptionParts.isNotEmpty) {
-        buffer.writeln(
-          _foldLine(
-            'DESCRIPTION:${_escape(descriptionParts.join('\\n'))}',
-          ),
-        );
-      }
+      final descriptionLine = descriptionParts.isEmpty
+          ? null
+          : _foldLine(
+              'DESCRIPTION:${_escape(descriptionParts.join('\\n'))}',
+            );
       final location = session.location.fullName;
-      if (location.trim().isNotEmpty && location != '地点待定') {
-        buffer.writeln(_foldLine('LOCATION:${_escape(location)}'));
+      final locationLine =
+          (location.trim().isEmpty || location == '地点待定')
+              ? null
+              : _foldLine('LOCATION:${_escape(location)}');
+      final summaryLine = _foldLine('SUMMARY:${_escape(entry.course.name)}');
+
+      // 2. 把周列表压缩成 RRULE 段，每段是一个 VEVENT。
+      // 连续 → COUNT=N；等差（如双周）→ INTERVAL=2;COUNT=N；
+      // 不规则 → 拆成多段。
+      final segments = _compressWeeks(weeks);
+      var indexInEntry = 0;
+      for (final seg in segments) {
+        final firstWeek = seg.first;
+        final startDate = week1Monday.add(
+          Duration(days: (firstWeek - 1) * 7 + (dayOfWeek - 1)),
+        );
+        final start = _composeDate(startDate, times.$1);
+        final end = _composeDate(startDate, times.$2);
+        if (start == null || end == null || !end.isAfter(start)) {
+          skipped?.add('${entry.course.name}：起讫时间组装失败 (week=$firstWeek)');
+          continue;
+        }
+
+        final uid =
+            '${entry.course.id}-w${firstWeek}d$dayOfWeek-$termId-${indexInEntry++}'
+            '@uni-yi';
+
+        buffer
+          ..writeln('BEGIN:VEVENT')
+          ..writeln('UID:$uid')
+          ..writeln('DTSTAMP:$stamp')
+          ..writeln('DTSTART:${_formatLocal(start)}')
+          ..writeln('DTEND:${_formatLocal(end)}')
+          ..writeln(summaryLine);
+        if (descriptionLine != null) {
+          buffer.writeln(descriptionLine);
+        }
+        if (locationLine != null) {
+          buffer.writeln(locationLine);
+        }
+        if (seg.count > 1) {
+          if (seg.interval == 1) {
+            buffer.writeln('RRULE:FREQ=WEEKLY;COUNT=${seg.count}');
+          } else {
+            buffer.writeln(
+              'RRULE:FREQ=WEEKLY;INTERVAL=${seg.interval};COUNT=${seg.count}',
+            );
+          }
+        }
+        buffer.writeln('END:VEVENT');
+        written++;
       }
-      if (count > 1) {
-        buffer.writeln('RRULE:FREQ=WEEKLY;COUNT=$count');
-      }
-      buffer.writeln('END:VEVENT');
-      written++;
     }
 
     buffer.writeln('END:VCALENDAR');
@@ -275,6 +310,63 @@ class ScheduleIcsExporter {
   String _d2(int n) => n.toString().padLeft(2, '0');
   String _d4(int n) => n.toString().padLeft(4, '0');
 
+  /// 只保留实际开始时间晚于 [cutoff] 的周次。
+  List<int> _filterFutureWeeks({
+    required List<int> weeks,
+    required int dayOfWeek,
+    required DateTime week1Monday,
+    required DateTime cutoff,
+  }) {
+    final result = <int>[];
+    for (final w in weeks) {
+      // 把这一节的"那一天"取出来，没必要管 HH:mm —— 只要那天 23:59 之后就保留。
+      final day = week1Monday.add(
+        Duration(days: (w - 1) * 7 + (dayOfWeek - 1)),
+      );
+      // cutoff 当作"今天 00:00"或当前时间皆可。这里用"day 23:59 > cutoff"
+      // 这种语义保留所有"今天起还会发生"的课次。
+      final dayEnd = DateTime(day.year, day.month, day.day, 23, 59);
+      if (dayEnd.isAfter(cutoff)) {
+        result.add(w);
+      }
+    }
+    return result;
+  }
+
+  /// 把周列表压缩成 RRULE 段。每段都是公差为 [interval] 的等差序列。
+  /// 例：[1,2,3,5,7,9,10] → [(1,3,1), (5,3,2), (10,1,1)]
+  List<_WeekSegment> _compressWeeks(List<int> weeks) {
+    final segments = <_WeekSegment>[];
+    if (weeks.isEmpty) return segments;
+    final sorted = [...weeks]..sort();
+
+    var i = 0;
+    while (i < sorted.length) {
+      final start = sorted[i];
+      if (i == sorted.length - 1) {
+        segments.add(_WeekSegment(first: start, count: 1, interval: 1));
+        break;
+      }
+      final interval = sorted[i + 1] - start;
+      if (interval <= 0) {
+        segments.add(_WeekSegment(first: start, count: 1, interval: 1));
+        i++;
+        continue;
+      }
+      var count = 2;
+      var j = i + 2;
+      while (j < sorted.length && sorted[j] - sorted[j - 1] == interval) {
+        count++;
+        j++;
+      }
+      segments.add(
+        _WeekSegment(first: start, count: count, interval: interval),
+      );
+      i = j;
+    }
+    return segments;
+  }
+
   String _escape(String value) {
     return value
         .replaceAll(r'\', r'\\')
@@ -302,4 +394,16 @@ class ScheduleIcsExporter {
     }
     return buffer.toString();
   }
+}
+
+class _WeekSegment {
+  const _WeekSegment({
+    required this.first,
+    required this.count,
+    required this.interval,
+  });
+
+  final int first;
+  final int count;
+  final int interval;
 }

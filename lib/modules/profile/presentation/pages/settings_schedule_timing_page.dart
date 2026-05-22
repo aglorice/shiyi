@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../app/settings/app_preferences.dart';
 import '../../../../app/settings/app_preferences_controller.dart';
 import '../../../../app/settings/schedule_timing_preference.dart';
 import '../../../../app/theme/design_tokens.dart';
