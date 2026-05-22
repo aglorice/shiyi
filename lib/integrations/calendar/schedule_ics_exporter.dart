@@ -124,7 +124,7 @@ class ScheduleIcsExporter {
         continue;
       }
 
-      final descriptionParts = <String>[
+      final baseDescriptionParts = <String>[
         if (entry.course.teacher.trim().isNotEmpty)
           '教师 ${entry.course.teacher}',
         '节次 ${session.sectionLabel}',
@@ -132,11 +132,6 @@ class ScheduleIcsExporter {
         if (entry.course.note?.trim().isNotEmpty ?? false)
           '备注 ${entry.course.note}',
       ];
-      final descriptionLine = descriptionParts.isEmpty
-          ? null
-          : _foldLine(
-              'DESCRIPTION:${_escape(descriptionParts.join('\\n'))}',
-            );
       final location = session.location.fullName;
       final locationLine =
           (location.trim().isEmpty || location == '地点待定')
@@ -144,26 +139,30 @@ class ScheduleIcsExporter {
               : _foldLine('LOCATION:${_escape(location)}');
       final summaryLine = _foldLine('SUMMARY:${_escape(entry.course.name)}');
 
-      // 2. 把周列表压缩成 RRULE 段，每段是一个 VEVENT。
-      // 连续 → COUNT=N；等差（如双周）→ INTERVAL=2;COUNT=N；
-      // 不规则 → 拆成多段。
-      final segments = _compressWeeks(weeks);
-      var indexInEntry = 0;
-      for (final seg in segments) {
-        final firstWeek = seg.first;
+      // 2. 不再用 RRULE 压缩，而是每一周都写一条独立的 VEVENT。
+      // 这样所有日历客户端都能直接看到 12/13/14/... 周的具体事件，
+      // UID 中包含具体周号保证唯一性，重复导入也不会冲突。
+      for (final w in weeks) {
         final startDate = week1Monday.add(
-          Duration(days: (firstWeek - 1) * 7 + (dayOfWeek - 1)),
+          Duration(days: (w - 1) * 7 + (dayOfWeek - 1)),
         );
         final start = _composeDate(startDate, times.$1);
         final end = _composeDate(startDate, times.$2);
         if (start == null || end == null || !end.isAfter(start)) {
-          skipped?.add('${entry.course.name}：起讫时间组装失败 (week=$firstWeek)');
+          skipped?.add('${entry.course.name}：起讫时间组装失败 (week=$w)');
           continue;
         }
 
+        final descriptionParts = <String>[
+          '第 $w 周',
+          ...baseDescriptionParts,
+        ];
+        final descriptionLine = _foldLine(
+          'DESCRIPTION:${_escape(descriptionParts.join('\\n'))}',
+        );
+
         final uid =
-            '${entry.course.id}-w${firstWeek}d$dayOfWeek-$termId-${indexInEntry++}'
-            '@uni-yi';
+            '${entry.course.id}-w${w}d$dayOfWeek-$termId@uni-yi';
 
         buffer
           ..writeln('BEGIN:VEVENT')
@@ -171,21 +170,10 @@ class ScheduleIcsExporter {
           ..writeln('DTSTAMP:$stamp')
           ..writeln('DTSTART:${_formatLocal(start)}')
           ..writeln('DTEND:${_formatLocal(end)}')
-          ..writeln(summaryLine);
-        if (descriptionLine != null) {
-          buffer.writeln(descriptionLine);
-        }
+          ..writeln(summaryLine)
+          ..writeln(descriptionLine);
         if (locationLine != null) {
           buffer.writeln(locationLine);
-        }
-        if (seg.count > 1) {
-          if (seg.interval == 1) {
-            buffer.writeln('RRULE:FREQ=WEEKLY;COUNT=${seg.count}');
-          } else {
-            buffer.writeln(
-              'RRULE:FREQ=WEEKLY;INTERVAL=${seg.interval};COUNT=${seg.count}',
-            );
-          }
         }
         buffer.writeln('END:VEVENT');
         written++;
@@ -333,40 +321,6 @@ class ScheduleIcsExporter {
     return result;
   }
 
-  /// 把周列表压缩成 RRULE 段。每段都是公差为 [interval] 的等差序列。
-  /// 例：[1,2,3,5,7,9,10] → [(1,3,1), (5,3,2), (10,1,1)]
-  List<_WeekSegment> _compressWeeks(List<int> weeks) {
-    final segments = <_WeekSegment>[];
-    if (weeks.isEmpty) return segments;
-    final sorted = [...weeks]..sort();
-
-    var i = 0;
-    while (i < sorted.length) {
-      final start = sorted[i];
-      if (i == sorted.length - 1) {
-        segments.add(_WeekSegment(first: start, count: 1, interval: 1));
-        break;
-      }
-      final interval = sorted[i + 1] - start;
-      if (interval <= 0) {
-        segments.add(_WeekSegment(first: start, count: 1, interval: 1));
-        i++;
-        continue;
-      }
-      var count = 2;
-      var j = i + 2;
-      while (j < sorted.length && sorted[j] - sorted[j - 1] == interval) {
-        count++;
-        j++;
-      }
-      segments.add(
-        _WeekSegment(first: start, count: count, interval: interval),
-      );
-      i = j;
-    }
-    return segments;
-  }
-
   String _escape(String value) {
     return value
         .replaceAll(r'\', r'\\')
@@ -394,16 +348,4 @@ class ScheduleIcsExporter {
     }
     return buffer.toString();
   }
-}
-
-class _WeekSegment {
-  const _WeekSegment({
-    required this.first,
-    required this.count,
-    required this.interval,
-  });
-
-  final int first;
-  final int count;
-  final int interval;
 }

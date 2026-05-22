@@ -85,8 +85,8 @@ class _SettingsScheduleExportPageState
                   ),
                   _MetaRow(
                     icon: Icons.repeat_rounded,
-                    label: '重复规则',
-                    value: '识别单/双周与跳周',
+                    label: '生成方式',
+                    value: '每周一条独立事件',
                   ),
                   _ToggleRow(
                     icon: Icons.skip_next_rounded,
