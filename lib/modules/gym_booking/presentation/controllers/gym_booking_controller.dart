@@ -61,11 +61,19 @@ class GymBookingController extends AsyncNotifier<GymBookingOverview> {
     );
 
     if (result case Success<BookingRecord>(data: final record)) {
-      // 1. 立即把新预约塞到"我的预约"provider 的当前 state，
-      //    让首页卡片和列表页瞬间显示，不必等下一次远端拉取。
-      _patchAppointmentsState(record);
+      // 1. 只有当 gateway 已经在远端列表里挑到 effective=未使用 的真实记录时，
+      //    才把它塞进列表 state（看 record.recordId 是否为空 + effective 状态）。
+      //    历史脏数据（同 WID 同时段的旧记录）会因为 effective=已取消 被排除，
+      //    不会污染列表。占位记录（recordId 为 null）也跳过塞入，
+      //    完全交给 invalidate 让远端覆盖。
+      final isConfirmed = record.recordId != null &&
+          record.recordId!.isNotEmpty &&
+          record.effectiveStatusCode == '001';
+      if (isConfirmed) {
+        _patchAppointmentsState(record);
+      }
 
-      // 2. 后台异步刷新一次远端，覆盖本地的占位数据。
+      // 2. 立刻让"我的预约"重新拉一次，让真实数据覆盖。
       ref.invalidate(myGymAppointmentsProvider);
 
       final current = state.value;
@@ -83,10 +91,11 @@ class GymBookingController extends AsyncNotifier<GymBookingOverview> {
                 .toList(),
         };
 
+        // 只有确认的真实 record 才进 overview.records，避免占位/脏数据污染。
         state = AsyncData(
           current.copyWith(
             slotsByVenue: updatedSlots,
-            records: [record, ...current.records],
+            records: isConfirmed ? [record, ...current.records] : current.records,
             fetchedAt: DateTime.now(),
           ),
         );
@@ -269,6 +278,38 @@ final gymSearchModelProvider = FutureProvider<GymSearchModel>((ref) async {
     session: session,
   );
 
+  return result.requireValue();
+});
+
+/// "我的预约"页搜索模型：包含 SYZT/HYSLX/SFWY 等控件
+/// 及它们的 code URL（前端用它驱动 chip 候选项）。
+final gymAppointmentSearchModelProvider =
+    FutureProvider<GymSearchModel>((ref) async {
+  final authState = await ref.watch(authControllerProvider.future);
+  final session = authState.session;
+  if (session == null) {
+    throw const AuthenticationFailure('当前未登录，无法加载预约搜索模型。');
+  }
+
+  final repository = ref.read(gymBookingRepositoryProvider);
+  final result = await repository.fetchAppointmentSearchModel(session: session);
+  return result.requireValue();
+});
+
+/// 拉取任意一个 `/qljfwapp/code/<id>.do` 的候选项。
+/// 调用方传 url，返回 [GymFilterOption] 列表。
+final gymCodeOptionsProvider =
+    FutureProvider.family<List<GymFilterOption>, String>((ref, codeUrl) async {
+  final authState = await ref.watch(authControllerProvider.future);
+  final session = authState.session;
+  if (session == null) {
+    throw const AuthenticationFailure('当前未登录，无法加载代码表。');
+  }
+  final repository = ref.read(gymBookingRepositoryProvider);
+  final result = await repository.fetchCodeOptions(
+    session: session,
+    codeUrl: codeUrl,
+  );
   return result.requireValue();
 });
 

@@ -218,4 +218,32 @@ class GymBookingRepositoryImpl implements GymBookingRepository {
   }) async {
     return _gateway.fetchGymSearchModel(session);
   }
+
+  @override
+  Future<Result<GymSearchModel>> fetchAppointmentSearchModel({
+    required AppSession session,
+  }) async {
+    return _gateway.fetchGymAppointmentSearchModel(session);
+  }
+
+  @override
+  Future<Result<List<GymFilterOption>>> fetchCodeOptions({
+    required AppSession session,
+    required String codeUrl,
+  }) async {
+    return _gateway.fetchGymCodeOptions(session, codeUrl: codeUrl);
+  }
+
+  @override
+  Future<Result<List<String>>> fetchRoomAvailableSlots({
+    required AppSession session,
+    required String roomId,
+    required DateTime applyDate,
+  }) async {
+    return _gateway.fetchGymRoomAvailableSlots(
+      session,
+      roomId: roomId,
+      applyDate: applyDate,
+    );
+  }
 }

@@ -491,6 +491,7 @@ class _RecommendationSectionState
     );
 
     final searchUseCase = ref.read(searchGymVenuesUseCaseProvider);
+    final gateway = ref.read(schoolPortalGatewayProvider);
     final items = <GymRecommendationItem>[];
     final mergedSlots = <String, Map<String, BookableSlot>>{};
     final mergedVenues = <String, Venue>{};
@@ -554,24 +555,80 @@ class _RecommendationSectionState
     final sortedVenues = mergedVenues.values.toList()
       ..sort((left, right) => left.name.compareTo(right.name));
 
-    // 不要在这里对每个 slot 都 checkCanApply：
-    // 1. 体育馆系统对短时间高频 check 有滑动风控，会让真正下单时反而被拒。
-    // 2. 每次 check 都生成新的 VERIFICATION，本地累计太多反而干扰风控判断。
-    // 推荐区只用本地条件筛掉过期/不可达的时段，剩下的留给"确认预约"那一步去校验。
+    // 推荐区会逐 slot 调 checkCanApply，确保用户看到的"可预约"是后端真正放行的。
+    // 注意点：
+    // 1. 先用本地规则（时段已过、时间段偏好等）过一遍，避免给已经不可能的 slot 打 check。
+    // 2. 串行调用 + 每次之间小睡，节奏放慢避免触发学校系统的滑动风控。
+    // 3. 学校后端对短时间内大量 checkCanApply 会做风控判定，
+    //    "宁可慢一点也不要被风控"是更稳妥的策略。
+    const slotInterval = Duration(milliseconds: 250); // 单 slot 之间
+    const venueInterval = Duration(milliseconds: 600); // 场地切换间隔
+    var venueIndex = 0;
     for (final venue in sortedVenues) {
+      if (!mounted) {
+        return;
+      }
+      // 场地之间也歇一下，避免连续打。
+      if (venueIndex > 0) {
+        await Future<void>.delayed(venueInterval);
+        if (!mounted) {
+          return;
+        }
+      }
+      venueIndex++;
+
       final candidateSlots = mergedSlots[venue.id]?.values.toList() ?? const [];
       if (candidateSlots.isEmpty) {
         continue;
       }
 
-      final availableSlots = candidateSlots
+      // 先把已经过期的 slot 直接剔除，不浪费 check 次数。
+      final feasibleSlots = candidateSlots
           .where(_isSlotStillBookable)
           .toList()
         ..sort((a, b) => a.startTime.compareTo(b.startTime));
+      if (feasibleSlots.isEmpty) {
+        continue;
+      }
+
+      final availableSlots = <BookableSlot>[];
+      for (var i = 0; i < feasibleSlots.length; i++) {
+        if (!mounted) {
+          return;
+        }
+        final slot = feasibleSlots[i];
+        final eligibility = await gateway.checkGymBookingEligibility(
+          session,
+          draft: BookingDraft(
+            venue: venue,
+            slot: slot,
+            attendeeName: session.displayName,
+            date: _normalizeDate(widget.selectedDate),
+            userAccount: session.userId,
+            phone: widget.preferences.gymPhoneNumber,
+            bizWid: venue.bizWid,
+          ),
+        );
+        if (eligibility case Success<GymBookingEligibility>(
+          data: final data,
+        )) {
+          if (data.canApply) {
+            availableSlots.add(slot);
+          }
+        }
+        // 同场地内部 slot 之间也节流一下。
+        if (i < feasibleSlots.length - 1) {
+          await Future<void>.delayed(slotInterval);
+        }
+      }
 
       if (availableSlots.isNotEmpty) {
         items.add(
-          GymRecommendationItem(venue: venue, slots: availableSlots),
+          GymRecommendationItem(
+            venue: venue,
+            slots: availableSlots
+              ..sort((a, b) => a.startTime.compareTo(b.startTime)),
+          ),
         );
       }
     }

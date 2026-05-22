@@ -10,6 +10,8 @@ import '../../../../shared/widgets/surface_card.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../domain/entities/gym_appointment_page.dart';
 import '../../domain/entities/gym_booking_overview.dart';
+import '../../domain/entities/gym_search_filter.dart';
+import '../controllers/gym_booking_controller.dart';
 import '../widgets/gym_booking_components.dart';
 
 class GymMyAppointmentsPage extends ConsumerStatefulWidget {
@@ -21,7 +23,8 @@ class GymMyAppointmentsPage extends ConsumerStatefulWidget {
 }
 
 class _GymMyAppointmentsPageState extends ConsumerState<GymMyAppointmentsPage> {
-  static const _statusOptions = [
+  /// 远端代码表拉不到时的兜底（覆盖学校 SYZT.do 已知的 3 个值）。
+  static const _fallbackStatusOptions = <(String, String?)>[
     ('全部', null),
     ('未使用', '001'),
     ('已使用', '002'),
@@ -169,23 +172,13 @@ class _GymMyAppointmentsPageState extends ConsumerState<GymMyAppointmentsPage> {
                       onSubmitted: (_) => _fetch(reset: true),
                     ),
                     const SizedBox(height: 12),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: _statusOptions.map((item) {
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ChoiceChip(
-                              label: Text(item.$1),
-                              selected: _selectedStatusCode == item.$2,
-                              onSelected: (_) {
-                                setState(() => _selectedStatusCode = item.$2);
-                                _fetch(reset: true);
-                              },
-                            ),
-                          );
-                        }).toList(),
-                      ),
+                    _StatusFilterChips(
+                      selectedCode: _selectedStatusCode,
+                      fallback: _fallbackStatusOptions,
+                      onChanged: (code) {
+                        setState(() => _selectedStatusCode = code);
+                        _fetch(reset: true);
+                      },
                     ),
                     const SizedBox(height: 14),
                     Row(
@@ -321,5 +314,68 @@ class _GymMyAppointmentsPageState extends ConsumerState<GymMyAppointmentsPage> {
         ),
       ),
     );
+  }
+}
+
+/// SYZT 状态筛选 chip：
+/// - 优先用 `gymAppointmentSearchModelProvider` 拉到的 SYZT 控件 + 其
+///   `gymCodeOptionsProvider` 候选项；
+/// - 拉不到时回落到本地常量 [fallback]，UI 永远可用。
+/// "全部"始终显示在最前面。
+class _StatusFilterChips extends ConsumerWidget {
+  const _StatusFilterChips({
+    required this.selectedCode,
+    required this.fallback,
+    required this.onChanged,
+  });
+
+  final String? selectedCode;
+  final List<(String, String?)> fallback;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final modelAsync = ref.watch(gymAppointmentSearchModelProvider);
+    final options = modelAsync.maybeWhen(
+      data: (model) => _buildFromModel(ref, model),
+      orElse: () => null,
+    );
+
+    final entries = options ?? fallback;
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: entries.map((item) {
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: Text(item.$1),
+              selected: selectedCode == item.$2,
+              onSelected: (_) => onChanged(item.$2),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  /// 从远端 model 里取 SYZT 控件，再去 [gymCodeOptionsProvider] 拿候选项。
+  /// 候选项已通过 `ref.watch` 触发的 family provider 缓存，多次重建不重复请求。
+  List<(String, String?)>? _buildFromModel(WidgetRef ref, GymSearchModel model) {
+    final control = model.controlByName('SYZT');
+    final url = control?.url;
+    if (url == null || url.isEmpty) {
+      return null;
+    }
+    final optionsAsync = ref.watch(gymCodeOptionsProvider(url));
+    final options = optionsAsync.value;
+    if (options == null || options.isEmpty) {
+      return null;
+    }
+    return [
+      ('全部', null),
+      for (final option in options) (option.label, option.id),
+    ];
   }
 }

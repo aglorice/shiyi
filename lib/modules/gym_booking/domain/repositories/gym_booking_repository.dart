@@ -61,4 +61,22 @@ abstract class GymBookingRepository {
   Future<Result<GymSearchModel>> fetchSearchModel({
     required AppSession session,
   });
+
+  /// "我的预约"页对应的搜索模型（包含 SYZT/HYSLX/SFWY 等控件 + 它们的 url）。
+  Future<Result<GymSearchModel>> fetchAppointmentSearchModel({
+    required AppSession session,
+  });
+
+  /// 单独获取一个 `/qljfwapp/code/<id>.do` 的候选项。
+  Future<Result<List<GymFilterOption>>> fetchCodeOptions({
+    required AppSession session,
+    required String codeUrl,
+  });
+
+  /// 查询场地某天"实时剩余可约"时段。返回类似 `["18:00-19:20","19:20-20:40"]`。
+  Future<Result<List<String>>> fetchRoomAvailableSlots({
+    required AppSession session,
+    required String roomId,
+    required DateTime applyDate,
+  });
 }

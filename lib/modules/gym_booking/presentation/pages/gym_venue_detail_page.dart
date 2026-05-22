@@ -102,9 +102,33 @@ class _GymVenueDetailPageState extends ConsumerState<GymVenueDetailPage> {
     switch (result) {
       case Success<search.GymVenueSearchPage>(data: final data):
         final venue = data.venues.isNotEmpty ? data.venues.first : null;
-        final slots = venue == null
+        final baseSlots = venue == null
             ? const <BookableSlot>[]
             : (data.slotsByVenue[venue.id] ?? const []);
+
+        // 在基础排期之上，再用 getSjdByRoom 拿"实时剩余可约"时段交集，
+        // 把已经被别人订掉/被锁定的时段从 UI 里剔除。
+        var slots = baseSlots;
+        if (venue != null && baseSlots.isNotEmpty) {
+          final repo = ref.read(gymBookingRepositoryProvider);
+          final availableResult = await repo.fetchRoomAvailableSlots(
+            session: session,
+            roomId: venue.id,
+            applyDate: _selectedDate,
+          );
+          if (availableResult case Success<List<String>>(data: final available)) {
+            if (available.isNotEmpty) {
+              final allowed = available.toSet();
+              slots = baseSlots
+                  .where((slot) => allowed.contains(slot.timeLabel))
+                  .toList();
+            }
+          }
+          if (!mounted) {
+            return;
+          }
+        }
+
         setState(() {
           _bookingVenue = venue;
           _slots = slots;

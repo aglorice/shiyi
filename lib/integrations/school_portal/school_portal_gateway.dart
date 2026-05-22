@@ -94,6 +94,28 @@ abstract class SchoolPortalGateway {
   });
 
   Future<Result<GymSearchModel>> fetchGymSearchModel(AppSession session);
+
+  /// 拉"我的预约"列表的 searchMeta，返回里包含 SYZT/HYSLX/SFWY 等控件
+  /// 及它们对应的 code URL，调用方用它去 [fetchGymCodeOptions] 拿候选项。
+  Future<Result<GymSearchModel>> fetchGymAppointmentSearchModel(
+    AppSession session,
+  );
+
+  /// 灵活拉取任意一个 `/qljfwapp/code/<id>.do` 候选项。
+  /// 内部缓存 + POST/GET 双探测，调用方只需要给 url。
+  Future<Result<List<GymFilterOption>>> fetchGymCodeOptions(
+    AppSession session, {
+    required String codeUrl,
+  });
+
+  /// 查询场地在某天"实时剩余可约"的时段列表。
+  /// 后端会在这里剔除已被订走/被锁定的时段，所以这是比 `getOpeningRoom.do`
+  /// 的 `day1..day7.times` 更准确的可约时段来源。
+  Future<Result<List<String>>> fetchGymRoomAvailableSlots(
+    AppSession session, {
+    required String roomId,
+    required DateTime applyDate,
+  });
   Future<Result<List<ServiceCardGroup>>> fetchServiceCards(AppSession session);
   Future<Result<List<ServiceItem>>> fetchServiceCategoryItems(
     AppSession session, {
@@ -541,61 +563,241 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
     AppSession session, {
     required BookingDraft draft,
   }) async {
+    final flowId = DateTime.now().millisecondsSinceEpoch.toRadixString(36);
     _logger.info(
-      '[Gateway] 提交场馆预约 userId=${session.userId} '
-      'venue=${draft.venue.name} date=${draft.date} '
-      'slot=${draft.slot.timeLabel}',
+      '[Gym][Submit][$flowId] 开始提交预约 userId=${session.userId} '
+      'venue="${draft.venue.name}" venueWid=${draft.venue.id} '
+      'bizWid=${draft.bizWid ?? draft.venue.bizWid} '
+      'date=${_formatDate(draft.date)} slot=${draft.slot.timeLabel} '
+      'phone=${draft.phone ?? '-'}',
     );
+
     final validation = await validateSession(session);
     if (validation.isFailure) {
+      _logger.warn(
+        '[Gym][Submit][$flowId] 会话校验失败 '
+        'reason=${validation.failureOrNull?.message}',
+      );
       return FailureResult(validation.failureOrNull!);
     }
 
     // 同一份 formData（含 VERIFICATION/timestamp）必须在 checkCanApply 与
     // startFlow 之间共享，否则两次请求的 VERIFICATION 不一致会被后端拒绝。
     final formData = _buildGymApplyFormData(draft);
+    _logger.infoBlock(
+      '[Gym][Submit][$flowId] formData',
+      _prettyJson(formData),
+    );
 
+    // ---- 0. getSjdByRoom ----
+    // 拿这天该场地"实时剩余可约"的时段集合。比 getOpeningRoom.do 的 day1..day7
+    // 更准确——已经被别人订掉/锁定的时段不会出现。
+    // 如果用户选的 SYSJ 不在最新可约列表里，直接返回，省一次 checkCanApply 往返
+    // 也避免给学校系统额外的风控压力。
+    final venueRoomId = draft.venue.id;
+    final sysj = formData['SYSJ']?.toString() ?? draft.slot.timeLabel;
+    if (venueRoomId.isNotEmpty) {
+      final dateStr = formData['YYRQ']?.toString() ?? _formatDate(draft.date);
+      _logger.info(
+        '[Gym][Submit][$flowId] >>> POST /modules/application/getSjdByRoom.do '
+        'roomId=$venueRoomId applyDate=$dateStr',
+      );
+      final slotResult = await _portalApi.fetchGymData(
+        session,
+        path: '/modules/application/getSjdByRoom.do',
+        formFields: {
+          'applyDate': dateStr,
+          'roomId': venueRoomId,
+        },
+      );
+      if (slotResult case FailureResult<dynamic>(failure: final failure)) {
+        _logger.warn(
+          '[Gym][Submit][$flowId] <<< getSjdByRoom 网络失败 '
+          'reason=${failure.message}（继续走 checkCanApply 兜底）',
+        );
+      } else {
+        final raw = slotResult.dataOrNull;
+        List<String> available = const [];
+        if (raw is List) {
+          available = raw
+              .map((item) => item?.toString().trim() ?? '')
+              .where((item) => item.isNotEmpty)
+              .toList();
+        }
+        _logger.infoBlock(
+          '[Gym][Submit][$flowId] getSjdByRoom response',
+          _prettyJson(available),
+        );
+        if (available.isNotEmpty && !available.contains(sysj)) {
+          _logger.warn(
+            '[Gym][Submit][$flowId] getSjdByRoom 命中冲突 '
+            '需要时段=$sysj 实时可约=${available.join(',')}',
+          );
+          return const FailureResult(BusinessFailure('该时段已被占用，请换一个时段。'));
+        }
+      }
+    }
+
+    // ---- 0a. getFill ----
+    // 正式网页提交前会先 POST /modules/pay/getFill.do 拿到这次预约对应的金额，
+    // 返回是纯文本/数字字面量（例如 "0.00"），仅用于前端展示「费用」并把
+    // 用户视为「已查看费用须知」。哪怕金额是 0 也要打这一下，否则部分场地
+    // 后续会以「未确认费用」拒绝预约。
+    final fillFields = <String, dynamic>{
+      'BIZ_WID': formData['BIZ_WID']?.toString() ?? '',
+      'SYSJ': sysj,
+    };
+    _logger.info(
+      '[Gym][Submit][$flowId] >>> POST /modules/pay/getFill.do',
+    );
+    _logger.infoBlock(
+      '[Gym][Submit][$flowId] getFill request body',
+      _prettyJson(fillFields),
+    );
+    final fillResult = await _portalApi.fetchGymData(
+      session,
+      path: '/modules/pay/getFill.do',
+      formFields: fillFields,
+    );
+    if (fillResult case FailureResult<dynamic>(failure: final failure)) {
+      _logger.warn(
+        '[Gym][Submit][$flowId] <<< getFill 网络失败 '
+        'reason=${failure.message}',
+      );
+      // 这一步是「告诉后端用户已查看费用」，单纯失败不阻断主流程，
+      // 但要记录下来方便排查。
+    } else {
+      _logger.info(
+        '[Gym][Submit][$flowId] <<< getFill 返回金额=${fillResult.dataOrNull}',
+      );
+    }
+
+    // ---- 0b. checkSelfTodayYyData ----
+    // 这一步对应正式网页提交前的"今日是否已预约"自检。
+    // 如果当天已经有预约，后端会在这里直接返回非空 rows，
+    // 走到 checkCanApply 反而会拿到容易误导用户的错误。
+    final selfCheckFields = <String, dynamic>{
+      'YYRQ': formData['YYRQ']?.toString() ?? _formatDate(draft.date),
+    };
+    _logger.info(
+      '[Gym][Submit][$flowId] >>> POST '
+      '/modules/application/checkSelfTodayYyData.do',
+    );
+    _logger.infoBlock(
+      '[Gym][Submit][$flowId] checkSelfTodayYyData request body',
+      _prettyJson(selfCheckFields),
+    );
+    final selfCheckResult = await _portalApi.fetchGymData(
+      session,
+      path: '/modules/application/checkSelfTodayYyData.do',
+      formFields: selfCheckFields,
+    );
+    if (selfCheckResult case FailureResult<dynamic>(failure: final failure)) {
+      _logger.warn(
+        '[Gym][Submit][$flowId] <<< checkSelfTodayYyData 网络失败 '
+        'reason=${failure.message}',
+      );
+      return FailureResult(failure);
+    }
+    _logger.infoBlock(
+      '[Gym][Submit][$flowId] checkSelfTodayYyData response',
+      _prettyJson(selfCheckResult.dataOrNull),
+    );
+    final existingCount = _extractGymRows(
+      selfCheckResult.dataOrNull,
+      dataKey: 'checkSelfTodayYyData',
+    ).length;
+    if (existingCount > 0) {
+      const msg = '当天已存在预约记录，无法再次预约。';
+      _logger.warn(
+        '[Gym][Submit][$flowId] checkSelfTodayYyData 命中已有预约 count=$existingCount',
+      );
+      return const FailureResult(BusinessFailure(msg));
+    }
+    _logger.info('[Gym][Submit][$flowId] checkSelfTodayYyData 无冲突');
+
+    // ---- 1. checkCanApply ----
+    _logger.info(
+      '[Gym][Submit][$flowId] >>> POST /modules/application/checkCanApply.do',
+    );
+    _logger.infoBlock(
+      '[Gym][Submit][$flowId] checkCanApply request body',
+      _prettyJson(formData),
+    );
     final checkResult = await _portalApi.fetchGymData(
       session,
       path: '/modules/application/checkCanApply.do',
       formFields: formData,
     );
     if (checkResult case FailureResult<dynamic>(failure: final failure)) {
+      _logger.warn(
+        '[Gym][Submit][$flowId] <<< checkCanApply 网络失败 '
+        'reason=${failure.message}',
+      );
       return FailureResult(failure);
     }
+    _logger.infoBlock(
+      '[Gym][Submit][$flowId] checkCanApply response',
+      _prettyJson(checkResult.dataOrNull),
+    );
+
     final eligibilityResult = _parseGymEligibility(checkResult.dataOrNull);
     if (eligibilityResult case FailureResult<GymBookingEligibility>(
       failure: final failure,
     )) {
+      _logger.warn(
+        '[Gym][Submit][$flowId] checkCanApply 解析失败 '
+        'reason=${failure.message}',
+      );
       return FailureResult(failure);
     }
     if (eligibilityResult.dataOrNull?.canApply != true) {
-      return FailureResult(
-        BusinessFailure(eligibilityResult.dataOrNull?.message ?? '预约校验未通过。'),
+      final msg = eligibilityResult.dataOrNull?.message ?? '预约校验未通过。';
+      _logger.warn(
+        '[Gym][Submit][$flowId] checkCanApply 拒绝预约 reason=$msg',
       );
+      return FailureResult(BusinessFailure(msg));
     }
+    _logger.info('[Gym][Submit][$flowId] checkCanApply 通过');
 
+    // ---- 2. startFlow ----
+    final startFlowFields = <String, dynamic>{
+      'formData': jsonEncode(formData),
+      'id': 'start',
+      'sendMessage': 'true',
+      'commandType': 'start',
+      'execute': 'do_start',
+      'name': '提交',
+      'commandEvent':
+          'com.wisedu.emap.lwWiseduCgyy.service.Impl.ApplyCheckFlowService',
+      'url': '/sys/emapflow/tasks/startFlow.do',
+      'buttonType': 'success',
+      'taskId': '',
+      'defKey': 'lwWiseduCgyy.MainFlow',
+    };
+    _logger.info(
+      '[Gym][Submit][$flowId] >>> POST /sys/emapflow/tasks/startFlow.do',
+    );
+    _logger.infoBlock(
+      '[Gym][Submit][$flowId] startFlow request body',
+      _prettyJson(startFlowFields),
+    );
     final startFlowResult = await _portalApi.fetchGymData(
       session,
       path: '/sys/emapflow/tasks/startFlow.do',
-      formFields: {
-        'formData': jsonEncode(formData),
-        'id': 'start',
-        'sendMessage': 'true',
-        'commandType': 'start',
-        'execute': 'do_start',
-        'name': '提交',
-        'commandEvent':
-            'com.wisedu.emap.lwWiseduCgyy.service.Impl.ApplyCheckFlowService',
-        'url': '/sys/emapflow/tasks/startFlow.do',
-        'buttonType': 'success',
-        'taskId': '',
-        'defKey': 'lwWiseduCgyy.MainFlow',
-      },
+      formFields: startFlowFields,
     );
     if (startFlowResult case FailureResult<dynamic>(failure: final failure)) {
+      _logger.warn(
+        '[Gym][Submit][$flowId] <<< startFlow 网络失败 '
+        'reason=${failure.message}',
+      );
       return FailureResult(failure);
     }
+    _logger.infoBlock(
+      '[Gym][Submit][$flowId] startFlow response',
+      _prettyJson(startFlowResult.dataOrNull),
+    );
 
     final submitData = startFlowResult.dataOrNull;
     if (submitData is Map<String, dynamic>) {
@@ -603,40 +805,80 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
       if (succeed == false || succeed == 'false') {
         final msg =
             _pickString(submitData, const ['msg', 'message']) ?? '预约提交失败。';
+        _logger.warn(
+          '[Gym][Submit][$flowId] startFlow succeed=false reason=$msg',
+        );
         return FailureResult(BusinessFailure(msg));
       }
     }
+    _logger.info('[Gym][Submit][$flowId] startFlow 成功');
 
+    // ---- 3. insertSelfToZtry ----
     // startFlow 成功后必须再写一条同行人记录（申请人本人入 ZTRY），否则
     // 服务端会把这条预约视为"未完成同行人登记"而清掉/隐藏，
     // 表现就是"刚刚预约成功，过几分钟就查不到"。
     final applyWid = formData['WID'] as String?;
     if (applyWid != null && applyWid.isNotEmpty) {
+      final ztryFields = <String, dynamic>{
+        'APPLY_WID': applyWid,
+        'USER_ID': session.userId,
+        // 注意：是 BY5=1，不是 BY51。这个字段对应模型里的"是否提交"标记，
+        // 抓包里值固定为 1，缺失会导致后端把这条预约视为"未完成同行人登记"
+        // 直接置为已取消（详情页就会出现"刚预约就已取消"的现象）。
+        'BY5': '1',
+      };
+      _logger.info(
+        '[Gym][Submit][$flowId] >>> POST '
+        '/modules/application/insertSelfToZtry.do',
+      );
+      _logger.infoBlock(
+        '[Gym][Submit][$flowId] insertSelfToZtry request body',
+        _prettyJson(ztryFields),
+      );
       final ztryResult = await _portalApi.fetchGymData(
         session,
         path: '/modules/application/insertSelfToZtry.do',
-        formFields: {
-          'APPLY_WID': applyWid,
-          'USER_ID': session.userId,
-          'BY51': '',
-        },
+        formFields: ztryFields,
       );
       if (ztryResult case FailureResult<dynamic>(failure: final failure)) {
-        _logger.warn('[Gateway] insertSelfToZtry 失败 reason=${failure.message}');
+        _logger.warn(
+          '[Gym][Submit][$flowId] <<< insertSelfToZtry 网络失败 '
+          'reason=${failure.message}',
+        );
       } else {
+        _logger.infoBlock(
+          '[Gym][Submit][$flowId] insertSelfToZtry response',
+          _prettyJson(ztryResult.dataOrNull),
+        );
         final ztryData = ztryResult.dataOrNull;
         if (ztryData is Map<String, dynamic>) {
           final code = _pickString(ztryData, const ['code']);
           if (code != null && code != '0') {
-            _logger.warn('[Gateway] insertSelfToZtry 返回非成功 code=$code '
-                'msg=${_pickString(ztryData, const ['msg', 'message'])}');
+            _logger.warn(
+              '[Gym][Submit][$flowId] insertSelfToZtry 返回非成功 code=$code '
+              'msg=${_pickString(ztryData, const ['msg', 'message'])}',
+            );
           }
         }
       }
+    } else {
+      _logger.warn(
+        '[Gym][Submit][$flowId] formData 中 WID 为空，跳过 insertSelfToZtry',
+      );
     }
 
-    _logger.info('[Gateway] 场馆预约提交成功 venue=${draft.venue.name}');
+    _logger.info(
+      '[Gym][Submit][$flowId] 提交流程完成 venue="${draft.venue.name}" '
+      'slot=${draft.slot.timeLabel}',
+    );
 
+    // 远端列表里同一个 (venueName, slot, date) 经常会有多条记录——
+    // 包括同场地同时段反复预约/取消形成的历史脏数据。
+    // 不能简单"匹配第一条就返回"，否则会把上一次取消的记录当成本次结果。
+    // 优先级：
+    //   1. effective 状态是"未使用"
+    //   2. 申请时间（SQSJ）最新
+    //   3. 实在挑不到，使用占位记录，由后续 invalidate 修正
     final refreshedRecords = await fetchMyGymAppointments(
       session,
       page: 1,
@@ -645,12 +887,73 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
     if (refreshedRecords case Success<List<BookingRecord>>(
       data: final records,
     )) {
-      for (final record in records) {
-        if (record.venueName == draft.venue.name &&
+      final candidates = records.where((record) {
+        return record.venueName == draft.venue.name &&
             record.slotLabel == draft.slot.timeLabel &&
-            _normalizeDate(record.date) == _normalizeDate(draft.date)) {
-          return Success(record);
+            _normalizeDate(record.date) == _normalizeDate(draft.date);
+      }).toList();
+
+      _logger.info(
+        '[Gym][Submit][$flowId] 远端列表命中候选 ${candidates.length} 条',
+      );
+
+      // 先在 effective=001（真正"未使用"）里挑最新的。
+      BookingRecord? best;
+      for (final record in candidates) {
+        if (record.effectiveStatusCode != '001') {
+          continue;
         }
+        if (best == null) {
+          best = record;
+          continue;
+        }
+        final left = best.submittedAt;
+        final right = record.submittedAt;
+        if (left == null) {
+          best = record;
+        } else if (right != null && right.isAfter(left)) {
+          best = record;
+        }
+      }
+
+      if (best != null) {
+        _logger.info(
+          '[Gym][Submit][$flowId] 已在远端列表确认到新记录 '
+          'recordId=${best.recordId} wid=${best.id} '
+          'submittedAt=${best.submittedAt}',
+        );
+        return Success(best);
+      }
+
+      // 走到这说明：startFlow 返回 succeed=true，但远端列表里同
+      // (场地 + 日期 + 时段) 的所有记录都已经处于"已取消/已使用"。
+      // 实测情况下，学校后端会在以下场景静默拒约（即便 startFlow 显示 ok）：
+      //   - 用户处于违约冷冻期（SFWY=1，WYXZTS 未结束）
+      //   - 一周内同一项目预约次数已达上限
+      //   - 同一时段已被自己或他人占用
+      // 这种新记录创建出来就直接是 PAY_STATUS=CG_QX，
+      // 详情页里继承的取消时间是上一次的，看起来就像"预约后立刻被自动取消"。
+      // 与其返回成功让用户误会，不如直接告诉用户"系统拒约"。
+      if (candidates.isNotEmpty) {
+        BookingRecord newest = candidates.first;
+        for (final record in candidates) {
+          final left = newest.submittedAt;
+          final right = record.submittedAt;
+          if (left == null) {
+            newest = record;
+          } else if (right != null && right.isAfter(left)) {
+            newest = record;
+          }
+        }
+        _logger.warn(
+          '[Gym][Submit][$flowId] 远端候选全部为非"未使用"状态，'
+          'newest=${newest.recordId} effectiveStatus=${newest.effectiveStatus} '
+          'payStatus=${newest.payStatusCode} 视为系统拒约',
+        );
+        final hint = newest.violation == '是' || newest.violation == '1'
+            ? '系统拒绝预约：当前可能处于违约冷冻期。请稍后再试或换一个项目。'
+            : '系统已自动取消该预约，可能受违约冷冻、次数上限或时段冲突限制。';
+        return FailureResult(BusinessFailure(hint));
       }
     }
 
@@ -736,15 +1039,35 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
       result.dataOrNull,
       dataKey: 'getMyAppointmentListData',
     );
+
+    // 服务端在按 SYZT 过滤时，没有把 PAY_STATUS=CG_QX 的脏数据排除掉。
+    // 例如点"未使用"也会拉到 SYZT=001 + PAY_STATUS=CG_QX 的旧记录，
+    // 这些记录在详情接口里实际是已取消状态。
+    // 因此当用户显式选了状态，再用客户端的 effectiveStatusCode 过一道。
+    final effectiveRecords =
+        query.statusCode == null || query.statusCode!.isEmpty
+            ? records
+            : records
+                .where((record) => record.effectiveStatusCode == query.statusCode)
+                .toList();
+    final filteredOut = records.length - effectiveRecords.length;
+    if (filteredOut > 0) {
+      _logger.info(
+        '[Gateway] 客户端过滤掉 $filteredOut 条与状态 ${query.statusCode} 不一致的脏数据',
+      );
+    }
+
     final pageData = GymAppointmentPage(
       query: query,
-      records: records,
-      totalSize: paging.totalSize,
+      records: effectiveRecords,
+      // totalSize 减去本页被过滤掉的条数，避免"远程总数 30，但实际显示 22"的违和感。
+      totalSize: paging.totalSize - filteredOut,
       fetchedAt: DateTime.now(),
       origin: DataOrigin.remote,
     );
     _logger.info(
-      '[Gateway] 我的场馆预约加载完成 count=${records.length} total=${paging.totalSize}',
+      '[Gateway] 我的场馆预约加载完成 count=${effectiveRecords.length} '
+      'rawTotal=${paging.totalSize}',
     );
     return Success(pageData);
   }
@@ -837,9 +1160,18 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
     required String appointmentId,
     String? reason,
   }) async {
-    _logger.info('[Gateway] 取消预约 wid=$appointmentId');
+    final flowId = DateTime.now().millisecondsSinceEpoch.toRadixString(36);
+    _logger.info(
+      '[Gym][Cancel][$flowId] 开始取消预约 userId=${session.userId} '
+      'wid=$appointmentId reason="${reason ?? '-'}"',
+    );
+
     final validation = await validateSession(session);
     if (validation.isFailure) {
+      _logger.warn(
+        '[Gym][Cancel][$flowId] 会话校验失败 '
+        'reason=${validation.failureOrNull?.message}',
+      );
       return FailureResult(validation.failureOrNull!);
     }
 
@@ -848,53 +1180,122 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
 
+    // ---- 1. qxPay ----
+    // 抓包顺序里的第一步。这里走的是缴费网关的"取消订单"，对个人非付费预约
+    // 通常返回 epay 通用 code（例如 #E2140600091, msg: epay.wisedu.edu.cn），
+    // 表示"无支付订单需要取消"，**不视为错误**，不阻断主流程。
+    final qxPayFields = <String, dynamic>{'WID': appointmentId};
+    _logger.info(
+      '[Gym][Cancel][$flowId] >>> POST /modules/pay/qxPay.do',
+    );
+    _logger.infoBlock(
+      '[Gym][Cancel][$flowId] qxPay request body',
+      _prettyJson(qxPayFields),
+    );
+    final qxPayResult = await _portalApi.fetchGymData(
+      session,
+      path: '/modules/pay/qxPay.do',
+      formFields: qxPayFields,
+    );
+    if (qxPayResult case FailureResult<dynamic>(failure: final failure)) {
+      _logger.warn(
+        '[Gym][Cancel][$flowId] <<< qxPay 网络失败 reason=${failure.message}（继续）',
+      );
+    } else {
+      _logger.infoBlock(
+        '[Gym][Cancel][$flowId] qxPay response',
+        _prettyJson(qxPayResult.dataOrNull),
+      );
+    }
+
+    // ---- 2. deleteZtcyYyData ----
+    // 抓包顺序里的第二步。把同行人表里的记录清掉。
+    // 失败也不阻塞主流程，只记录 warn。
+    final deleteFields = <String, dynamic>{'APPLY_WID': appointmentId};
+    _logger.info(
+      '[Gym][Cancel][$flowId] >>> POST '
+      '/modules/myApplication/deleteZtcyYyData.do',
+    );
+    _logger.infoBlock(
+      '[Gym][Cancel][$flowId] deleteZtcyYyData request body',
+      _prettyJson(deleteFields),
+    );
+    final ztryResult = await _portalApi.fetchGymData(
+      session,
+      path: '/modules/myApplication/deleteZtcyYyData.do',
+      formFields: deleteFields,
+    );
+    if (ztryResult case FailureResult<dynamic>(failure: final failure)) {
+      _logger.warn(
+        '[Gym][Cancel][$flowId] <<< deleteZtcyYyData 网络失败 '
+        'reason=${failure.message}（继续）',
+      );
+    } else {
+      _logger.infoBlock(
+        '[Gym][Cancel][$flowId] deleteZtcyYyData response',
+        _prettyJson(ztryResult.dataOrNull),
+      );
+      final ztryData = ztryResult.dataOrNull;
+      if (ztryData is Map<String, dynamic>) {
+        final code = _pickString(ztryData, const ['code']);
+        if (code != null && code != '0') {
+          _logger.warn(
+            '[Gym][Cancel][$flowId] deleteZtcyYyData 返回非成功 code=$code '
+            'msg=${_pickString(ztryData, const ['msg', 'message'])}',
+          );
+        }
+      }
+    }
+
+    // ---- 3. T_WISEDU_CGYY_YY_SAVE ----
+    // 真正落库的取消动作。前面两步是清理动作，这一步成功才算取消完成。
+    final saveFields = <String, dynamic>{
+      'WID': appointmentId,
+      'QXYY': (reason == null || reason.isEmpty) ? '0' : reason,
+      'QXSJ': qxsj,
+      'SYZT': '003',
+      'PAY_STATUS': 'CG_QX',
+    };
+    _logger.info(
+      '[Gym][Cancel][$flowId] >>> POST '
+      '/modules/myApplication/T_WISEDU_CGYY_YY_SAVE.do',
+    );
+    _logger.infoBlock(
+      '[Gym][Cancel][$flowId] T_WISEDU_CGYY_YY_SAVE request body',
+      _prettyJson(saveFields),
+    );
     final result = await _portalApi.fetchGymData(
       session,
       path: '/modules/myApplication/T_WISEDU_CGYY_YY_SAVE.do',
-      formFields: {
-        'WID': appointmentId,
-        'QXYY': (reason == null || reason.isEmpty) ? '0' : reason,
-        'QXSJ': qxsj,
-        'SYZT': '003',
-        'PAY_STATUS': 'CG_QX',
-      },
+      formFields: saveFields,
     );
 
     if (result case FailureResult<dynamic>(failure: final failure)) {
+      _logger.warn(
+        '[Gym][Cancel][$flowId] <<< T_WISEDU_CGYY_YY_SAVE 网络失败 '
+        'reason=${failure.message}',
+      );
       return FailureResult(failure);
     }
+    _logger.infoBlock(
+      '[Gym][Cancel][$flowId] T_WISEDU_CGYY_YY_SAVE response',
+      _prettyJson(result.dataOrNull),
+    );
 
     final data = result.dataOrNull;
     if (data is Map<String, dynamic>) {
       final code = _pickString(data, const ['code']);
       if (code != null && code != '0') {
         final msg = _pickString(data, const ['msg', 'message']) ?? '取消预约失败。';
+        _logger.warn(
+          '[Gym][Cancel][$flowId] T_WISEDU_CGYY_YY_SAVE 业务失败 '
+          'code=$code msg=$msg',
+        );
         return FailureResult(BusinessFailure(msg));
       }
     }
 
-    // 取消主流程之后，再调一次"清理同行人"接口，
-    // 否则 ZTRY 表里旧的同行人记录会残留，影响这条预约的结算/统计。
-    // 这一步即便失败也不阻塞主流程，只记录告警。
-    final ztryResult = await _portalApi.fetchGymData(
-      session,
-      path: '/modules/myApplication/deleteZtcyYyData.do',
-      formFields: {'APPLY_WID': appointmentId},
-    );
-    if (ztryResult case FailureResult<dynamic>(failure: final failure)) {
-      _logger.warn('[Gateway] deleteZtcyYyData 失败 reason=${failure.message}');
-    } else {
-      final ztryData = ztryResult.dataOrNull;
-      if (ztryData is Map<String, dynamic>) {
-        final code = _pickString(ztryData, const ['code']);
-        if (code != null && code != '0') {
-          _logger.warn('[Gateway] deleteZtcyYyData 返回非成功 code=$code '
-              'msg=${_pickString(ztryData, const ['msg', 'message'])}');
-        }
-      }
-    }
-
-    _logger.info('[Gateway] 取消预约成功 wid=$appointmentId');
+    _logger.info('[Gym][Cancel][$flowId] 取消流程完成 wid=$appointmentId');
     return const Success(null);
   }
 
@@ -1028,7 +1429,30 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
 
   @override
   Future<Result<GymSearchModel>> fetchGymSearchModel(AppSession session) async {
-    _logger.info('[Gateway] 加载场馆搜索模型');
+    return _fetchSearchModel(
+      session,
+      path: '/modules/application/getRoomOrderSearchModel.do',
+      logTag: '场馆搜索模型',
+    );
+  }
+
+  @override
+  Future<Result<GymSearchModel>> fetchGymAppointmentSearchModel(
+    AppSession session,
+  ) async {
+    return _fetchSearchModel(
+      session,
+      path: '/modules/myApplication/getMyAppointmentListData.do',
+      logTag: '我的预约搜索模型',
+    );
+  }
+
+  Future<Result<GymSearchModel>> _fetchSearchModel(
+    AppSession session, {
+    required String path,
+    required String logTag,
+  }) async {
+    _logger.info('[Gateway] 加载$logTag');
     final validation = await validateSession(session);
     if (validation.isFailure) {
       return FailureResult(validation.failureOrNull!);
@@ -1036,7 +1460,7 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
 
     final result = await _portalApi.fetchGymData(
       session,
-      path: '/modules/application/getRoomOrderSearchModel.do',
+      path: path,
       formFields: {'*searchMeta': '1'},
     );
     if (result case FailureResult<dynamic>(failure: final failure)) {
@@ -1045,10 +1469,122 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
 
     final model = await _parseSearchModel(session, result.dataOrNull);
     _logger.info(
-      '[Gateway] 搜索模型加载完成 controls=${model.controls.length} '
-      'venueTypes=${model.venueTypes.length} sports=${model.sports.length}',
+      '[Gateway] $logTag加载完成 controls=${model.controls.length}',
     );
     return Success(model);
+  }
+
+  /// 内存级 code 候选项缓存。key=codeUrl。
+  /// 这些代码表（场馆类型/项目/状态）极少变动，一次会话内复用即可。
+  final Map<String, List<GymFilterOption>> _codeCache = {};
+
+  @override
+  Future<Result<List<GymFilterOption>>> fetchGymCodeOptions(
+    AppSession session, {
+    required String codeUrl,
+  }) async {
+    final normalized = codeUrl.trim();
+    if (normalized.isEmpty) {
+      return const FailureResult(BusinessFailure('代码表 URL 为空。'));
+    }
+    final cached = _codeCache[normalized];
+    if (cached != null) {
+      return Success(cached);
+    }
+
+    final validation = await validateSession(session);
+    if (validation.isFailure) {
+      return FailureResult(validation.failureOrNull!);
+    }
+
+    var options = <GymFilterOption>[];
+    final remotePost = await _portalApi.fetchGymCodeData(
+      session,
+      codeUrl: normalized,
+      method: 'POST',
+    );
+    if (remotePost case Success<dynamic>(data: final data)) {
+      options = _parseRemoteFilterOptions(data);
+    }
+    if (options.isEmpty) {
+      final remoteGet = await _portalApi.fetchGymCodeData(
+        session,
+        codeUrl: normalized,
+        method: 'GET',
+      );
+      if (remoteGet case Success<dynamic>(data: final data)) {
+        options = _parseRemoteFilterOptions(data);
+      }
+    }
+
+    if (options.isEmpty) {
+      return const FailureResult(ParsingFailure('代码表候选项为空。'));
+    }
+
+    final deduped = _deduplicateFilterOptions(options);
+    _codeCache[normalized] = deduped;
+    return Success(deduped);
+  }
+
+  @override
+  Future<Result<List<String>>> fetchGymRoomAvailableSlots(
+    AppSession session, {
+    required String roomId,
+    required DateTime applyDate,
+  }) async {
+    if (roomId.trim().isEmpty) {
+      return const FailureResult(BusinessFailure('roomId 为空。'));
+    }
+    final validation = await validateSession(session);
+    if (validation.isFailure) {
+      return FailureResult(validation.failureOrNull!);
+    }
+
+    final dateStr = _formatDate(applyDate);
+    final fields = <String, dynamic>{
+      'applyDate': dateStr,
+      'roomId': roomId,
+    };
+    _logger.info(
+      '[Gym] >>> POST /modules/application/getSjdByRoom.do '
+      'roomId=$roomId applyDate=$dateStr',
+    );
+    final result = await _portalApi.fetchGymData(
+      session,
+      path: '/modules/application/getSjdByRoom.do',
+      formFields: fields,
+    );
+    if (result case FailureResult<dynamic>(failure: final failure)) {
+      _logger.warn('[Gym] <<< getSjdByRoom 失败 reason=${failure.message}');
+      return FailureResult(failure);
+    }
+
+    // 接口返回是裸数组：["18:00-19:20","19:20-20:40", ...]
+    final raw = result.dataOrNull;
+    if (raw is List) {
+      final slots = raw
+          .map((item) => item?.toString().trim() ?? '')
+          .where((item) => item.isNotEmpty)
+          .toList();
+      _logger.info('[Gym] <<< getSjdByRoom 命中 ${slots.length} 个可约时段');
+      return Success(slots);
+    }
+    // 兜底：包了 datas/code 结构时尝试再解一层。
+    if (raw is Map<String, dynamic>) {
+      for (final key in const ['datas', 'data']) {
+        final value = raw[key];
+        if (value is List) {
+          final slots = value
+              .map((item) => item?.toString().trim() ?? '')
+              .where((item) => item.isNotEmpty)
+              .toList();
+          _logger.info('[Gym] <<< getSjdByRoom 命中 ${slots.length} 个可约时段');
+          return Success(slots);
+        }
+      }
+    }
+    _logger.warn('[Gym] <<< getSjdByRoom 响应格式无法识别 raw=$raw');
+    return const Success(<String>[]);
   }
 
   Future<GymSearchModel> _parseSearchModel(
@@ -2088,6 +2624,14 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
     final encoded = Uri.encodeComponent(raw);
     final verification = base64Encode(utf8.encode(encoded));
 
+    // 关键：formData 里的 WID 不是场地 WID，而是「本次申请」的全新 UUID。
+    // 学校前端 JS 里用的是 `g_wid = $.UUID()`，每次进预约表单都会新生成一个 32 位无连字符 UUID。
+    // 之前我们把 draft.venue.id 直接当 WID 用，等于复用了场地 WID，
+    // 后端会把这次提交识别为「对同一个 application 的重新提交」，
+    // 把上一次的 PAY_STATUS=CG_QX、QXYY、QXSJ 全部带回来，
+    // 表现就是「明明预约成功了，详情页却显示上次的取消信息」。
+    final applyWid = _generateApplyWid();
+
     return {
       'YYRXM': draft.attendeeName,
       'YYLX_DISPLAY': '个人预约',
@@ -2105,7 +2649,7 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
       'HYMS': '',
       'BZ': '',
       'FJ': '',
-      'WID': draft.venue.id,
+      'WID': applyWid,
       'XGH': draft.userAccount,
       'BIZ_WID': bizWid,
       'SYZT': '001',
@@ -2113,6 +2657,17 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
       'BCSQRS': 1,
       'USERID': draft.userAccount,
     };
+  }
+
+  /// 生成 32 位无连字符的随机 hex 串，对齐学校前端的 `$.UUID()` 输出。
+  /// 例如：8f6d57b6e9a7489c823403e2e1c443e3
+  String _generateApplyWid() {
+    const hex = '0123456789abcdef';
+    final buffer = StringBuffer();
+    for (var i = 0; i < 32; i++) {
+      buffer.write(hex[_random.nextInt(16)]);
+    }
+    return buffer.toString();
   }
 
   Result<GymBookingEligibility> _parseGymEligibility(dynamic raw) {
@@ -2212,9 +2767,16 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
       groups.add({
         'name': 'SYZT',
         'caption': '使用状态',
-        'builder': 'equal',
         'linkOpt': 'AND',
+        'builderList': 'cbl_m_List',
+        'builder': 'm_value_equal',
         'value': query.statusCode,
+        'value_display': switch (query.statusCode) {
+          '001' => '未使用',
+          '002' => '已使用',
+          '003' => '已取消',
+          _ => query.statusCode,
+        },
       });
     }
 
@@ -3195,6 +3757,20 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
     }
     return double.tryParse(value);
   }
+
+  /// 把任意 JSON 兼容对象格式化成 2 空格缩进的字符串，方便日志阅读。
+  /// 失败时回落到 `toString()`，确保日志不会因此抛错。
+  String _prettyJson(Object? value) {
+    if (value == null) {
+      return 'null';
+    }
+    try {
+      const encoder = JsonEncoder.withIndent('  ');
+      return encoder.convert(value);
+    } catch (_) {
+      return value.toString();
+    }
+  }
 }
 
 class _ParsedScheduleSession {
@@ -3487,6 +4063,30 @@ class TestingSchoolPortalGateway implements SchoolPortalGateway {
   @override
   Future<Result<GymSearchModel>> fetchGymSearchModel(AppSession session) async {
     return const FailureResult(BusinessFailure('测试环境未接入搜索模型。'));
+  }
+
+  @override
+  Future<Result<GymSearchModel>> fetchGymAppointmentSearchModel(
+    AppSession session,
+  ) async {
+    return const FailureResult(BusinessFailure('测试环境未接入预约搜索模型。'));
+  }
+
+  @override
+  Future<Result<List<GymFilterOption>>> fetchGymCodeOptions(
+    AppSession session, {
+    required String codeUrl,
+  }) async {
+    return const FailureResult(BusinessFailure('测试环境未接入代码表查询。'));
+  }
+
+  @override
+  Future<Result<List<String>>> fetchGymRoomAvailableSlots(
+    AppSession session, {
+    required String roomId,
+    required DateTime applyDate,
+  }) async {
+    return const FailureResult(BusinessFailure('测试环境未接入实时时段查询。'));
   }
 
   @override
