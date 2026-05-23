@@ -178,9 +178,14 @@ class _SmsLoginPageState extends ConsumerState<SmsLoginPage> {
 
     final passed = await SliderCaptchaSheet.show(context);
     if (passed != true) {
-      // 用户主动关闭或失败时，控制器会回到 idle，UI 自然回退。
+      // 用户主动关闭，或滑块失败后用户放弃（理论上失败会自动换图重试）
       return;
     }
+
+    if (!mounted) return;
+    // 滑块通过 → sheet 已关 → 真发短信。
+    // 失败时由 ref.listen 弹 SnackBar 提示，状态会回到 idle，用户重发会再次出滑块。
+    await notifier.requestDynamicCode();
   }
 
   Future<void> _onSubmit() async {

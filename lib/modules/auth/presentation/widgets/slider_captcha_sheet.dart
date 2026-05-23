@@ -429,7 +429,7 @@ class _SliderCaptchaSheetState extends ConsumerState<SliderCaptchaSheet> {
 
     final passed = await ref
         .read(smsLoginControllerProvider.notifier)
-        .submitSlider(payload: payload);
+        .verifySliderOnly(payload: payload);
 
     if (!mounted) return;
 

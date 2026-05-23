@@ -126,14 +126,14 @@ class SmsLoginController extends Notifier<SmsLoginState> {
     );
   }
 
-  /// 用户在滑块上松手时调用。返回 true 即通过。
-  Future<bool> submitSlider({
+  /// 用户在滑块上松手时调用：仅做滑块 verify，不发短信。
+  /// 返回 true 即滑块校验通过；调用方拿到 true 之后才去发短信。
+  Future<bool> verifySliderOnly({
     required SliderTrackPayload payload,
   }) async {
     final session = state.smsSession;
     final challenge = state.challenge;
-    final mobile = state.mobile;
-    if (session == null || challenge == null || mobile == null) {
+    if (session == null || challenge == null) {
       state = state.copyWith(errorMessage: '滑块挑战已失效，请重试。');
       return false;
     }
@@ -149,34 +149,45 @@ class SmsLoginController extends Notifier<SmsLoginState> {
     }
     final result = verify.requireValue();
     if (!result.passed) {
-      // 拖错或被风控，重新换张图。
+      // 拖错或被风控：换张图给用户重试，sheet 不关。
       await refreshChallenge();
       return false;
     }
+    return true;
+  }
 
-    // 滑块通过，立刻发短信。
+  /// 滑块通过、sheet 已经关闭后，由页面层调用一次发短信。
+  /// 不进入 awaitingSlider 阶段，直接 sendingSms → smsSent 或回到 idle。
+  Future<void> requestDynamicCode() async {
+    final session = state.smsSession;
+    final mobile = state.mobile;
+    if (session == null || mobile == null) {
+      state = state.copyWith(errorMessage: '会话已失效，请重试。');
+      return;
+    }
     state = state.copyWith(
       phase: SmsLoginPhase.sendingSms,
       clearChallenge: true,
+      clearError: true,
     );
+    final gateway = ref.read(schoolPortalGatewayProvider);
     final sendResult = await gateway.sendDynamicCode(
       session,
       mobile: mobile,
     );
     if (sendResult case FailureResult<String>(failure: final f)) {
-      // 短信发送失败：回到 idle 让用户改号或重发；不进入冷却。
+      // 短信发送失败：回到 idle 让用户改号或重新点获取验证码（会重新出滑块）
       state = state.copyWith(
         phase: SmsLoginPhase.idle,
         errorMessage: f.message,
       );
-      return false;
+      return;
     }
     state = state.copyWith(
       phase: SmsLoginPhase.smsSent,
       cooldownSeconds: 60,
     );
     _runCooldown();
-    return true;
   }
 
   /// 用户在滑块 sheet 里点"换一张"，或滑块校验失败后自动调。
