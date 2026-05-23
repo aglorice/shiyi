@@ -1,15 +1,9 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import '../widgets/app_snackbar.dart';
 
-/// 通用站外/站内页面浏览器壳。
-///
-/// 同一份代码同时跑移动端和桌面端：
-/// - 移动端用平台原生 WebView；
-/// - Windows 端走 WebView2，能在桌面里直接看通知详情、文件附件等。
 class LinkWebViewPage extends StatefulWidget {
   const LinkWebViewPage({super.key, required this.title, required this.uri});
 
@@ -21,9 +15,45 @@ class LinkWebViewPage extends StatefulWidget {
 }
 
 class _LinkWebViewPageState extends State<LinkWebViewPage> {
+  late final WebViewController _controller;
   bool _isLoading = true;
   String? _errorMessage;
-  int _reloadKey = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageFinished: (_) {
+            if (!mounted) {
+              return;
+            }
+            setState(() => _isLoading = false);
+          },
+          onWebResourceError: (error) {
+            if (!mounted) {
+              return;
+            }
+            setState(() {
+              _isLoading = false;
+              _errorMessage = '加载失败：${error.description}';
+            });
+          },
+        ),
+      );
+
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    await _controller.loadRequest(widget.uri);
+  }
 
   Future<void> _copyLink() async {
     await Clipboard.setData(ClipboardData(text: widget.uri.toString()));
@@ -38,18 +68,8 @@ class _LinkWebViewPageState extends State<LinkWebViewPage> {
     );
   }
 
-  void _reload() {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-      _reloadKey++;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),
@@ -73,17 +93,17 @@ class _LinkWebViewPageState extends State<LinkWebViewPage> {
                     Icon(
                       Icons.language_rounded,
                       size: 44,
-                      color: theme.colorScheme.onSurfaceVariant,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                     const SizedBox(height: 14),
                     Text(
                       _errorMessage!,
                       textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyLarge,
+                      style: Theme.of(context).textTheme.bodyLarge,
                     ),
                     const SizedBox(height: 16),
                     FilledButton.tonal(
-                      onPressed: _reload,
+                      onPressed: _load,
                       child: const Text('重新加载'),
                     ),
                   ],
@@ -91,32 +111,7 @@ class _LinkWebViewPageState extends State<LinkWebViewPage> {
               ),
             )
           else
-            InAppWebView(
-              key: ValueKey(_reloadKey),
-              initialUrlRequest: URLRequest(url: WebUri.uri(widget.uri)),
-              initialSettings: InAppWebViewSettings(
-                javaScriptEnabled: true,
-                isInspectable: kDebugMode,
-                cacheEnabled: true,
-                supportZoom: true,
-                transparentBackground: true,
-              ),
-              onWebViewCreated: (controller) {
-                // 仅触发首次加载，无需保存。
-              },
-              onLoadStop: (_, __) {
-                if (mounted) {
-                  setState(() => _isLoading = false);
-                }
-              },
-              onReceivedError: (_, __, error) {
-                if (!mounted) return;
-                setState(() {
-                  _isLoading = false;
-                  _errorMessage = '加载失败：${error.description}';
-                });
-              },
-            ),
+            WebViewWidget(controller: _controller),
           if (_isLoading && _errorMessage == null)
             const Center(child: CircularProgressIndicator()),
         ],
