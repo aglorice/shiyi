@@ -37,9 +37,18 @@ import '../../shared/pages/link_webview_page.dart';
 import '../shell/campus_shell.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
-  final authAsync = ref.watch(authControllerProvider);
+  // 用一个稳定的 notifier 触发 GoRouter 的 redirect 重新评估，
+  // 而不是 ref.watch(authControllerProvider) —— 后者每次 auth state 变化
+  // 都会重建整个 GoRouter，从而把 LoginPage 卸载掉，导致登录中弹出的
+  // 滑块 sheet 因 BuildContext 失效而无法显示。
+  final refreshListenable = ValueNotifier<int>(0);
+  ref.listen(authControllerProvider, (_, __) {
+    refreshListenable.value++;
+  });
+  ref.onDispose(refreshListenable.dispose);
 
   return GoRouter(
+    refreshListenable: refreshListenable,
     initialLocation: '/',
     routes: [
       GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
@@ -223,6 +232,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
     ],
     redirect: (context, state) {
+      final authAsync = ref.read(authControllerProvider);
       final loc = state.matchedLocation;
       final isLogin = loc == '/login' || loc == '/login/sms';
       final isAuthenticated = authAsync.value?.isAuthenticated ?? false;
