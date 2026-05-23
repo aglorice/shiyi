@@ -12,8 +12,8 @@ import '../controllers/sms_login_controller.dart';
 ///
 /// 行为对齐学校 web 端 longbow.slidercaptcha.js：
 /// - 大图固定渲染 280×155，按 `BoxFit.cover` 填满；
-/// - 小拼图渲染宽度 = `tagWidth * (280 / bigImageNaturalWidth)`，
-///   完全复刻 web 端的缩放公式（保持视觉与官网一致）；
+/// - 小拼图渲染宽度 = `smallNatural × (280 / bigNatural)`，
+///   完全复刻 web 端的缩放公式（保持视觉与官网一致，缺口 / 拼图 一致大小）；
 /// - 拖动按钮位移驱动小拼图同步移动；mousedown / mousemove / mouseup
 ///   全程采样并组装 tracks 上传。
 /// - 校验通过：sheet 自动收起；失败：换图重试。
@@ -69,8 +69,8 @@ class _SliderCaptchaSheetState extends ConsumerState<SliderCaptchaSheet> {
   /// 拖偏 / 失败 / 成功的视觉态：null=默认，'success'=绿，'fail'=红。
   String? _flashState;
 
-  /// 用 `tagWidth * (280 / bigImageNaturalWidth)` 计算出来的真实渲染宽度。
-  /// null 表示还没解到大图原尺寸，渲染时按 fitHeight 兜底。
+  /// 用 `smallNatural × (280 / bigNatural)` 计算出来的真实渲染宽度。
+  /// null 表示还没解到原图尺寸，渲染时按 fitHeight 兜底。
   double? _puzzleRenderWidth;
 
   /// 当前 challenge 的解码缓存，用来对比 isSameChallenge。
@@ -86,21 +86,30 @@ class _SliderCaptchaSheetState extends ConsumerState<SliderCaptchaSheet> {
     });
   }
 
-  /// 用 [ui.instantiateImageCodec] 拿大图 naturalWidth，再算小拼图渲染宽度。
+  /// 用 [ui.instantiateImageCodec] 拿大图 + 小图的 naturalWidth，再按 web 端
+  /// 公式 `smallNatural * (280 / bigNatural)` 算出真正的渲染宽度。
+  /// 之前直接用 `tagWidth * (280 / bigNatural)` 不对：tagWidth 不一定等于
+  /// smallImage 解码后的 naturalWidth（PNG 尾部塞了 16 字节加密残料），
+  /// 撞上后会拼图比缺口小。
   Future<void> _ensurePuzzleSizeFor(SliderCaptchaChallenge? challenge) async {
     if (challenge == null) return;
     if (identical(_decodedChallenge, challenge)) return;
     _decodedChallenge = challenge;
     try {
-      final codec = await ui.instantiateImageCodec(challenge.bigImageBytes);
-      final frame = await codec.getNextFrame();
-      final natural = frame.image.width;
-      frame.image.dispose();
+      final bigCodec = await ui.instantiateImageCodec(challenge.bigImageBytes);
+      final bigFrame = await bigCodec.getNextFrame();
+      final bigNatural = bigFrame.image.width;
+      bigFrame.image.dispose();
+      final smallCodec =
+          await ui.instantiateImageCodec(challenge.smallImageBytes);
+      final smallFrame = await smallCodec.getNextFrame();
+      final smallNatural = smallFrame.image.width;
+      smallFrame.image.dispose();
       if (!mounted) return;
-      if (natural <= 0 || challenge.tagWidth <= 0) return;
+      if (bigNatural <= 0 || smallNatural <= 0) return;
       setState(() {
         _puzzleRenderWidth =
-            challenge.tagWidth * (SliderCaptchaSheet.canvasWidth / natural);
+            smallNatural * (SliderCaptchaSheet.canvasWidth / bigNatural);
       });
     } catch (_) {
       // 解码失败就保留 null，由兜底的 fitHeight 渲染。
