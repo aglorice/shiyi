@@ -334,6 +334,70 @@ class WyuPortalApi {
     }
   }
 
+  // ---- 发送短信验证码 ----
+
+  /// 五邑统一身份认证里手机号字段会以同一套 AES（CBC+PKCS7+随机 IV+随机 64 prefix）
+  /// 加密，盐固定为 `DEFAULT_SALT`。
+  static const _smsMobileSalt = 'rjBFAaHsNkKAhpoi';
+
+  /// 调 `/authserver/dynamicCode/getDynamicCode.htl` 发短信。
+  ///
+  /// 必须在 [verifySliderCaptcha] 通过之后立即调用，服务端靠 cookies 携带
+  /// 通过标记（例如 `JSESSIONID` 上挂的滑块通过状态）。
+  Future<Result<String>> sendDynamicCode(
+    SmsLoginSession smsSession, {
+    required String mobile,
+  }) async {
+    final cookieStore = _CookieStore(smsSession.cookies);
+    try {
+      final encryptedMobile =
+          _transformer.encryptPassword(mobile, _smsMobileSalt);
+      _logger.info(
+        '[SMS] 发送动态验证码 mobile=${_maskShort(mobile, keepStart: 3, keepEnd: 2)} '
+        'encMobile=${_maskShort(encryptedMobile)}',
+      );
+      final response = await _postForm(
+        Uri.parse(
+          'https://authserver.wyu.edu.cn/authserver/dynamicCode/getDynamicCode.htl',
+        ),
+        {'mobile': encryptedMobile, 'captcha': ''},
+        cookieStore,
+      );
+      smsSession.cookies = cookieStore.snapshot();
+      if (response.statusCode != 200) {
+        return FailureResult(
+          AuthenticationFailure('短信发送失败，状态码 ${response.statusCode}。'),
+        );
+      }
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      final code = json['code']?.toString() ?? '';
+      final message = json['message']?.toString() ??
+          json['msg']?.toString() ??
+          '';
+      _logger.info('[SMS] 动态验证码返回 code=$code message=$message');
+      if (code == 'success' || code == '0' || code == 'ok') {
+        return Success(message.isEmpty ? '验证码已发送' : message);
+      }
+      return FailureResult(
+        AuthenticationFailure(message.isEmpty ? '短信发送失败。' : message),
+      );
+    } on DioException catch (error, stackTrace) {
+      _logger.error('[SMS] 短信发送失败', error: error, stackTrace: stackTrace);
+      return FailureResult(
+        NetworkFailure('短信发送失败。', cause: error, stackTrace: stackTrace),
+      );
+    } catch (error, stackTrace) {
+      _logger.error('[SMS] 短信发送异常', error: error, stackTrace: stackTrace);
+      return FailureResult(
+        AuthenticationFailure(
+          '短信发送失败。',
+          cause: error,
+          stackTrace: stackTrace,
+        ),
+      );
+    }
+  }
+
   // -----------------------------------------------------------------
 
   Future<Result<void>> validateSession(AppSession session) async {

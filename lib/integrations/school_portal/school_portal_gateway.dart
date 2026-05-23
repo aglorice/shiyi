@@ -45,6 +45,12 @@ abstract class SchoolPortalGateway {
     required SliderTrackPayload payload,
     required String safeSecure,
   });
+
+  /// 滑块通过后向服务端发送短信。返回成功提示语 / 失败原因。
+  Future<Result<String>> sendDynamicCode(
+    SmsLoginSession smsSession, {
+    required String mobile,
+  });
   Future<Result<ScheduleSnapshot>> fetchSchedule(
     AppSession session, {
     String? termId,
@@ -1854,6 +1860,14 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
       payload: payload,
       safeSecure: safeSecure,
     );
+  }
+
+  @override
+  Future<Result<String>> sendDynamicCode(
+    SmsLoginSession smsSession, {
+    required String mobile,
+  }) {
+    return _portalApi.sendDynamicCode(smsSession, mobile: mobile);
   }
 
   @override
@@ -4153,6 +4167,14 @@ class TestingSchoolPortalGateway implements SchoolPortalGateway {
     SmsLoginSession smsSession, {
     required SliderTrackPayload payload,
     required String safeSecure,
+  }) async {
+    return const FailureResult(BusinessFailure('测试环境未接入短信登录。'));
+  }
+
+  @override
+  Future<Result<String>> sendDynamicCode(
+    SmsLoginSession smsSession, {
+    required String mobile,
   }) async {
     return const FailureResult(BusinessFailure('测试环境未接入短信登录。'));
   }

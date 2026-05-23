@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,17 +11,23 @@ import '../controllers/sms_login_controller.dart';
 /// 滑块验证 BottomSheet。
 ///
 /// 行为对齐学校 web 端 longbow.slidercaptcha.js：
-/// - 大图固定 280×155，小拼图实际宽度 = `tagWidth`（服务端给）。
-/// - 用户拖动底部"滑动按钮"，按钮位移驱动小拼图同步移动。
-/// - mousedown / mousemove / mouseup 全程采样，组装成 tracks 上传。
+/// - 大图固定渲染 280×155，按 `BoxFit.cover` 填满；
+/// - 小拼图渲染宽度 = `tagWidth * (280 / bigImageNaturalWidth)`，
+///   完全复刻 web 端的缩放公式（保持视觉与官网一致）；
+/// - 拖动按钮位移驱动小拼图同步移动；mousedown / mousemove / mouseup
+///   全程采样并组装 tracks 上传。
 /// - 校验通过：sheet 自动收起；失败：换图重试。
 class SliderCaptchaSheet extends ConsumerStatefulWidget {
   const SliderCaptchaSheet({super.key});
 
   static const double canvasWidth = 280;
   static const double canvasHeight = 155;
-  static const double sliderHeight = 40;
-  static const double sliderButtonWidth = 40;
+
+  /// 滑块条与按钮高度（与 web 一致 ≈ 36，更紧凑视觉好看）。
+  static const double sliderHeight = 36;
+
+  /// 拖动按钮宽度，这里和 moveLength 计算保持一致。
+  static const double sliderButtonWidth = 36;
 
   /// 弹出 sheet 并等待"是否成功通过"。
   static Future<bool?> show(BuildContext context) {
@@ -62,6 +69,44 @@ class _SliderCaptchaSheetState extends ConsumerState<SliderCaptchaSheet> {
   /// 拖偏 / 失败 / 成功的视觉态：null=默认，'success'=绿，'fail'=红。
   String? _flashState;
 
+  /// 用 `tagWidth * (280 / bigImageNaturalWidth)` 计算出来的真实渲染宽度。
+  /// null 表示还没解到大图原尺寸，渲染时按 fitHeight 兜底。
+  double? _puzzleRenderWidth;
+
+  /// 当前 challenge 的解码缓存，用来对比 isSameChallenge。
+  SliderCaptchaChallenge? _decodedChallenge;
+
+  @override
+  void initState() {
+    super.initState();
+    // 第一次构建后异步算一次。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _ensurePuzzleSizeFor(
+          ref.read(smsLoginControllerProvider).challenge);
+    });
+  }
+
+  /// 用 [ui.instantiateImageCodec] 拿大图 naturalWidth，再算小拼图渲染宽度。
+  Future<void> _ensurePuzzleSizeFor(SliderCaptchaChallenge? challenge) async {
+    if (challenge == null) return;
+    if (identical(_decodedChallenge, challenge)) return;
+    _decodedChallenge = challenge;
+    try {
+      final codec = await ui.instantiateImageCodec(challenge.bigImageBytes);
+      final frame = await codec.getNextFrame();
+      final natural = frame.image.width;
+      frame.image.dispose();
+      if (!mounted) return;
+      if (natural <= 0 || challenge.tagWidth <= 0) return;
+      setState(() {
+        _puzzleRenderWidth =
+            challenge.tagWidth * (SliderCaptchaSheet.canvasWidth / natural);
+      });
+    } catch (_) {
+      // 解码失败就保留 null，由兜底的 fitHeight 渲染。
+    }
+  }
+
   /// 用于驱动 bar 文案。
   String get _barText {
     if (_verifying) return '校验中...';
@@ -77,8 +122,13 @@ class _SliderCaptchaSheetState extends ConsumerState<SliderCaptchaSheet> {
     );
     final theme = Theme.of(context);
 
+    // challenge 换张图时，重新算渲染宽度。
+    if (challenge != null && !identical(_decodedChallenge, challenge)) {
+      // ignore: discarded_futures
+      _ensurePuzzleSizeFor(challenge);
+    }
+
     if (challenge == null) {
-      // 控制器层会在拉到挑战前保持 awaitingSlider 阶段，但避免极端情况
       return Padding(
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: Center(
@@ -178,11 +228,19 @@ class _SliderCaptchaSheetState extends ConsumerState<SliderCaptchaSheet> {
                     Positioned(
                       left: _offset,
                       top: 0,
-                      child: Image.memory(
-                        challenge.smallImageBytes,
+                      child: SizedBox(
+                        width: _puzzleRenderWidth,
                         height: canvasHeight,
-                        fit: BoxFit.fitHeight,
-                        gaplessPlayback: true,
+                        child: Image.memory(
+                          challenge.smallImageBytes,
+                          width: _puzzleRenderWidth,
+                          height: canvasHeight,
+                          // 当还没量出 naturalWidth 时按高度兜底。
+                          fit: _puzzleRenderWidth == null
+                              ? BoxFit.fitHeight
+                              : BoxFit.fill,
+                          gaplessPlayback: true,
+                        ),
                       ),
                     ),
                   ],
@@ -269,7 +327,7 @@ class _SliderCaptchaSheetState extends ConsumerState<SliderCaptchaSheet> {
                           color: _flashState == null
                               ? const Color(0xFF8A8E91)
                               : Colors.white,
-                          size: 22,
+                          size: 18,
                         ),
                       ),
                     ),

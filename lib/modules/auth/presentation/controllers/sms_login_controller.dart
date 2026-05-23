@@ -30,6 +30,7 @@ class SmsLoginState {
     this.phase = SmsLoginPhase.idle,
     this.smsSession,
     this.challenge,
+    this.mobile,
     this.errorMessage,
     this.cooldownSeconds = 0,
   });
@@ -37,6 +38,7 @@ class SmsLoginState {
   final SmsLoginPhase phase;
   final SmsLoginSession? smsSession;
   final SliderCaptchaChallenge? challenge;
+  final String? mobile;
   final String? errorMessage;
 
   /// 距离下一次可重发短信的秒数；0 表示可发。
@@ -52,6 +54,7 @@ class SmsLoginState {
     SmsLoginSession? smsSession,
     bool clearChallenge = false,
     SliderCaptchaChallenge? challenge,
+    String? mobile,
     bool clearError = false,
     String? errorMessage,
     int? cooldownSeconds,
@@ -60,6 +63,7 @@ class SmsLoginState {
       phase: phase ?? this.phase,
       smsSession: smsSession ?? this.smsSession,
       challenge: clearChallenge ? null : (challenge ?? this.challenge),
+      mobile: mobile ?? this.mobile,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       cooldownSeconds: cooldownSeconds ?? this.cooldownSeconds,
     );
@@ -89,6 +93,7 @@ class SmsLoginController extends Notifier<SmsLoginState> {
 
     state = state.copyWith(
       phase: SmsLoginPhase.awaitingSlider,
+      mobile: mobile.trim(),
       clearError: true,
     );
 
@@ -127,7 +132,8 @@ class SmsLoginController extends Notifier<SmsLoginState> {
   }) async {
     final session = state.smsSession;
     final challenge = state.challenge;
-    if (session == null || challenge == null) {
+    final mobile = state.mobile;
+    if (session == null || challenge == null || mobile == null) {
       state = state.copyWith(errorMessage: '滑块挑战已失效，请重试。');
       return false;
     }
@@ -148,9 +154,23 @@ class SmsLoginController extends Notifier<SmsLoginState> {
       return false;
     }
 
-    // TODO(SMS-FLOW): 滑块通过后，调用 gateway 的 sendDynamicCode(mobile, smsSession)。
-    // 这一步的请求体（POST /authserver/dynamicCode）等用户抓包后再补全。
-    state = state.copyWith(phase: SmsLoginPhase.sendingSms, clearChallenge: true);
+    // 滑块通过，立刻发短信。
+    state = state.copyWith(
+      phase: SmsLoginPhase.sendingSms,
+      clearChallenge: true,
+    );
+    final sendResult = await gateway.sendDynamicCode(
+      session,
+      mobile: mobile,
+    );
+    if (sendResult case FailureResult<String>(failure: final f)) {
+      // 短信发送失败：回到 idle 让用户改号或重发；不进入冷却。
+      state = state.copyWith(
+        phase: SmsLoginPhase.idle,
+        errorMessage: f.message,
+      );
+      return false;
+    }
     state = state.copyWith(
       phase: SmsLoginPhase.smsSent,
       cooldownSeconds: 60,
