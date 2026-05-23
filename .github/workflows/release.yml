@@ -126,11 +126,59 @@ jobs:
           name: app-release
           path: build/app/outputs/flutter-apk/app-release.apk
 
+  build-windows:
+    name: Build Windows
+    needs: prepare
+    if: needs.prepare.outputs.version_changed == 'true'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows release
+        run: |
+          flutter build windows --release `
+            --build-name=${{ needs.prepare.outputs.version }} `
+            --build-number=${{ needs.prepare.outputs.build_number }}
+
+      - name: Package Windows release
+        shell: pwsh
+        run: |
+          $version = "${{ needs.prepare.outputs.version }}"
+          $releaseDir = "build/windows/x64/runner/Release"
+          if (-not (Test-Path $releaseDir)) {
+            Write-Error "Windows release output not found at $releaseDir"
+            exit 1
+          }
+          $zipName = "uni_yi-windows-x64-$version.zip"
+          Compress-Archive -Path "$releaseDir/*" -DestinationPath $zipName -Force
+          New-Item -ItemType Directory -Path artifacts -Force | Out-Null
+          Move-Item $zipName artifacts/
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-windows-release
+          path: artifacts/uni_yi-windows-x64-*.zip
+
   release:
     name: Create GitHub Release
     needs:
       - prepare
       - build-android
+      - build-windows
     if: needs.prepare.outputs.version_changed == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -147,12 +195,28 @@ jobs:
           name: app-release
           path: artifacts/
 
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-windows-release
+          path: artifacts/
+
       - name: Generate APK SHA1
         id: apk_sha1
         run: |
           SHA1=$(sha1sum artifacts/app-release.apk | awk '{print $1}')
           echo "sha1=$SHA1" >> "$GITHUB_OUTPUT"
           printf '%s  %s\n' "$SHA1" "app-release.apk" > artifacts/app-release.apk.sha1
+
+      - name: Generate Windows SHA1
+        id: win_sha1
+        run: |
+          ZIP_PATH=$(ls artifacts/uni_yi-windows-x64-*.zip | head -n 1)
+          ZIP_NAME=$(basename "$ZIP_PATH")
+          SHA1=$(sha1sum "$ZIP_PATH" | awk '{print $1}')
+          echo "sha1=$SHA1" >> "$GITHUB_OUTPUT"
+          echo "name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+          printf '%s  %s\n' "$SHA1" "$ZIP_NAME" > "artifacts/$ZIP_NAME.sha1"
 
       - name: Generate changelog
         id: changelog
@@ -198,10 +262,13 @@ jobs:
             | File | SHA1 | Description |
             | --- | --- | --- |
             | `app-release.apk` | `${{ steps.apk_sha1.outputs.sha1 }}` | Universal Android APK |
+            | `${{ steps.win_sha1.outputs.name }}` | `${{ steps.win_sha1.outputs.sha1 }}` | Windows x64 portable zip |
 
             See **Assets** below for the full package and checksum file.
           files: |
             artifacts/app-release.apk
             artifacts/app-release.apk.sha1
+            artifacts/uni_yi-windows-x64-*.zip
+            artifacts/uni_yi-windows-x64-*.zip.sha1
           draft: false
           prerelease: false

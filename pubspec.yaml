@@ -44,7 +44,7 @@ dependencies:
   flutter_displaymode: ^0.7.0
   flutter_auto_size_text: ^5.0.0
   html: ^0.15.6
-  webview_flutter: ^4.10.0
+  flutter_inappwebview: ^6.1.5
   path_provider: ^2.1.5
   package_info_plus: ^9.0.1
   share_plus: ^11.1.0
