@@ -196,7 +196,7 @@ class WyuPortalApi {
           AuthenticationFailure('登录页访问失败，状态码 ${loginPage.statusCode}。'),
         );
       }
-      final formData = _parseLoginForm(loginPage.body);
+      final formData = _parseLoginForm(loginPage.body, formId: 'phoneFromId');
 
       // 触发服务端往 session 里放滑块需要的标记。
       await _get(
@@ -1833,30 +1833,53 @@ class WyuPortalApi {
     return response;
   }
 
-  _LoginFormData _parseLoginForm(String html) {
+  _LoginFormData _parseLoginForm(String html, {String? formId}) {
+    final scope = formId == null ? html : _extractFormScope(html, formId);
+
     final pwdEncryptSalt = RegExp(
       r'id="pwdEncryptSalt"\s+value="([^"]*)"',
-    ).firstMatch(html)?.group(1);
-    final executions = RegExp(
-      r'name="execution"\s+value="([^"]*)"',
-    ).allMatches(html);
-    final execution = executions.isEmpty ? null : executions.last.group(1);
+    ).firstMatch(scope)?.group(1);
+    // execution 在表单尾部，可能用 name="execution" 或 id="execution" name="execution"
+    // 任意顺序，所以两条正则任取其一。
+    String? execution = RegExp(
+      r'id="execution"[^>]*name="execution"\s+value="([^"]*)"',
+    ).firstMatch(scope)?.group(1);
+    execution ??= RegExp(
+      r'name="execution"[^>]*value="([^"]*)"',
+    ).firstMatch(scope)?.group(1);
     final lt = RegExp(
-      r'name="lt"\s+id="lt"\s+value="([^"]*)"',
-    ).firstMatch(html)?.group(1);
+      r'name="lt"[^>]*value="([^"]*)"',
+    ).firstMatch(scope)?.group(1);
 
-    if (pwdEncryptSalt == null || execution == null) {
+    if (execution == null) {
+      throw const PortalContractChangedFailure('统一认证登录页结构已变化。');
+    }
+    if (formId == null && pwdEncryptSalt == null) {
+      // 旧的密码登录路径必须有 pwdEncryptSalt；短信登录走 formId 分支跳过此检查。
       throw const PortalContractChangedFailure('统一认证登录页结构已变化。');
     }
 
     _logger.debug(
-      '[SSO] 解析登录页成功 htmlPreview=${_truncate(_collapseWhitespace(html), 220)}',
+      '[SSO] 解析登录页成功'
+      '${formId == null ? '' : ' formId=$formId'} '
+      'htmlPreview=${_truncate(_collapseWhitespace(scope), 220)}',
     );
     return _LoginFormData(
-      pwdEncryptSalt: pwdEncryptSalt,
+      pwdEncryptSalt: pwdEncryptSalt ?? '',
       execution: execution,
       lt: lt ?? '',
     );
+  }
+
+  /// 从完整 HTML 里把 `<form id="formId" ...> ... </form>` 这块切出来。
+  /// 找不到时返回原 html，保留兜底；调用方仍可在全局空间跑正则。
+  String _extractFormScope(String html, String formId) {
+    final start = RegExp('<form[^>]*id="${RegExp.escape(formId)}"').firstMatch(html);
+    if (start == null) return html;
+    final from = start.start;
+    final end = html.indexOf('</form>', from);
+    if (end < 0) return html.substring(from);
+    return html.substring(from, end + '</form>'.length);
   }
 
   Uri _buildLoginUri({required String service}) {
