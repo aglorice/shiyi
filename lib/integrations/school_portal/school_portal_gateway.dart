@@ -51,6 +51,13 @@ abstract class SchoolPortalGateway {
     SmsLoginSession smsSession, {
     required String mobile,
   });
+
+  /// 用收到的 6 位短信验证码完成登录，返回完整 [AppSession]。
+  Future<Result<AppSession>> submitSmsLogin(
+    SmsLoginSession smsSession, {
+    required String mobile,
+    required String dynamicCode,
+  });
   Future<Result<ScheduleSnapshot>> fetchSchedule(
     AppSession session, {
     String? termId,
@@ -1868,6 +1875,19 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
     required String mobile,
   }) {
     return _portalApi.sendDynamicCode(smsSession, mobile: mobile);
+  }
+
+  @override
+  Future<Result<AppSession>> submitSmsLogin(
+    SmsLoginSession smsSession, {
+    required String mobile,
+    required String dynamicCode,
+  }) {
+    return _portalApi.submitSmsLogin(
+      smsSession,
+      mobile: mobile,
+      dynamicCode: dynamicCode,
+    );
   }
 
   @override
@@ -4175,6 +4195,15 @@ class TestingSchoolPortalGateway implements SchoolPortalGateway {
   Future<Result<String>> sendDynamicCode(
     SmsLoginSession smsSession, {
     required String mobile,
+  }) async {
+    return const FailureResult(BusinessFailure('测试环境未接入短信登录。'));
+  }
+
+  @override
+  Future<Result<AppSession>> submitSmsLogin(
+    SmsLoginSession smsSession, {
+    required String mobile,
+    required String dynamicCode,
   }) async {
     return const FailureResult(BusinessFailure('测试环境未接入短信登录。'));
   }

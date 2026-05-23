@@ -44,6 +44,11 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<void> saveSession(AppSession session) async {
+    await _sessionStore.save(session);
+  }
+
+  @override
   Future<void> logout() async {
     try {
       await _credentialVault.clear();

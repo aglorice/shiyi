@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../shared/widgets/app_snackbar.dart';
@@ -191,8 +192,12 @@ class _SmsLoginPageState extends ConsumerState<SmsLoginPage> {
   Future<void> _onSubmit() async {
     final mobile = _mobileController.text.trim();
     final code = _codeController.text.trim();
-    await ref
+    final ok = await ref
         .read(smsLoginControllerProvider.notifier)
         .submitLogin(mobile: mobile, code: code);
+    if (!mounted || !ok) return;
+    // 登录成功；router 的 redirect 会把已认证用户从 /login/sms 拉回到 '/'。
+    // 兜底主动 go('/')，避免有些情况下 redirect 没及时跑。
+    context.go('/');
   }
 }

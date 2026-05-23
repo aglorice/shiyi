@@ -4,6 +4,8 @@ import '../../../../app/di/app_providers.dart';
 import '../../../../core/result/result.dart';
 import '../../../../integrations/school_portal/sso/slider_captcha.dart';
 import '../../../../integrations/school_portal/sso/sms_login_session.dart';
+import '../../domain/entities/app_session.dart';
+import 'auth_controller.dart';
 
 /// 短信登录页的整体阶段。
 enum SmsLoginPhase {
@@ -216,27 +218,48 @@ class SmsLoginController extends Notifier<SmsLoginState> {
   }
 
   /// 用户最终点"登录"。
-  Future<void> submitLogin({
+  Future<bool> submitLogin({
     required String mobile,
     required String code,
   }) async {
-    if (state.smsSession == null) {
+    final session = state.smsSession;
+    if (session == null) {
       state = state.copyWith(errorMessage: '请先获取验证码。');
-      return;
+      return false;
     }
     if (code.trim().length != 6) {
       state = state.copyWith(errorMessage: '请输入 6 位验证码。');
-      return;
+      return false;
     }
     state = state.copyWith(phase: SmsLoginPhase.loggingIn, clearError: true);
 
-    // TODO(SMS-FLOW): 真正登录提交（POST /authserver/login，带 mobile/dynamicCode/
-    // execution/lt/cllt=dynamicLogin）等用户抓包补全后再调用 gateway，并把
-    // 拿到的 cookies 转化为 AppSession 走 authControllerProvider.replaceSession。
-    state = state.copyWith(
-      phase: SmsLoginPhase.smsSent,
-      errorMessage: '短信登录后端尚未接入，请等待开发完成。',
+    final gateway = ref.read(schoolPortalGatewayProvider);
+    final result = await gateway.submitSmsLogin(
+      session,
+      mobile: mobile.trim(),
+      dynamicCode: code.trim(),
     );
+    if (result case FailureResult<AppSession>(failure: final f)) {
+      state = state.copyWith(
+        phase: SmsLoginPhase.smsSent,
+        errorMessage: f.message,
+      );
+      return false;
+    }
+
+    final appSession = result.requireValue();
+    // 持久化 + 把 authController 的 state 切到 authenticated。
+    // 注意：短信流没有可重用的 password，所以不会进 credentialVault。
+    // 下次 cold start 走 restoreSession，session 还在；
+    // 一旦过期且没有 credential，就会被引导回登录页（其实可以再次走短信流）。
+    await ref.read(authRepositoryProvider).saveSession(appSession);
+    ref
+        .read(authControllerProvider.notifier)
+        .replaceSession(appSession);
+
+    // 重置自身状态，便于下次进入。
+    state = const SmsLoginState();
+    return true;
   }
 
   void _runCooldown() {

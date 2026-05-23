@@ -398,6 +398,121 @@ class WyuPortalApi {
     }
   }
 
+  // ---- 提交短信登录 ----
+
+  /// 用滑块通过 + 短信收到的 6 位验证码完成登录。
+  /// body 与密码登录类似，区别：
+  /// - `username` 是 **明文** 手机号；
+  /// - 多了 `dynamicCode` 字段；
+  /// - `cllt=dynamicLogin`（指明走短信通道）；
+  /// - 没有 password 字段。
+  Future<Result<AppSession>> submitSmsLogin(
+    SmsLoginSession smsSession, {
+    required String mobile,
+    required String dynamicCode,
+  }) async {
+    final cookieStore = _CookieStore(smsSession.cookies);
+    try {
+      final payload = {
+        'username': mobile,
+        'captcha': '',
+        'dynamicCode': dynamicCode,
+        '_eventId': 'submit',
+        'cllt': 'dynamicLogin',
+        'dllt': 'generalLogin',
+        'lt': smsSession.lt,
+        'execution': smsSession.execution,
+      };
+      _logger.info('[SMS] 提交短信登录 mobile=${_maskShort(mobile, keepStart: 3, keepEnd: 2)}');
+
+      var response = await _postForm(
+        _buildLoginUri(service: _portalServiceUrl),
+        payload,
+        cookieStore,
+      );
+
+      if (response.statusCode == 200 && _looksLikeKickOutPage(response.body)) {
+        response = await _handleKickOut(response.body, cookieStore);
+      }
+
+      if (response.statusCode != 302) {
+        _logger.warn('[SMS] 登录提交未返回 302，准备解析失败原因。');
+        return FailureResult(_mapLoginFailure(response.body));
+      }
+
+      final location = response.location;
+      if (location != null && location.contains('needCaptcha')) {
+        // 理论上短信流不会走到这里，因为滑块已通过；保留这条以防服务端临时
+        // 改策略。
+        return const FailureResult(AuthenticationFailure('登录被服务端要求重新验证。'));
+      }
+
+      if (location != null && location.isNotEmpty) {
+        await _followGetRedirects(response.uri.resolve(location), cookieStore);
+      }
+
+      smsSession.cookies = cookieStore.snapshot();
+
+      final profileResult = await _fetchUserProfileFromStore(cookieStore);
+      if (profileResult
+          case FailureResult<PortalUserProfile>(failure: final f)) {
+        return FailureResult(f);
+      }
+      final profile = profileResult.dataOrNull!;
+
+      // 学号：profile.userAccount 是统一身份认证的"账号"，本科生/研究生
+      // 都会落进来；fallback 用手机号。
+      final userId = profile.userAccount.trim().isNotEmpty
+          ? profile.userAccount.trim()
+          : mobile;
+
+      final services = await _fetchServiceLinksFromStore(cookieStore);
+      final yjsSessionId =
+          (await _initYjsSession(userId, cookieStore)).dataOrNull;
+
+      final session = AppSession(
+        userId: userId,
+        displayName: profile.userName.isEmpty ? userId : profile.userName,
+        cookies: cookieStore.snapshot(),
+        issuedAt: DateTime.now(),
+        expiresAt: DateTime.now().add(const Duration(hours: 8)),
+        profile: profile,
+        serviceLinks: services.dataOrNull ?? const [],
+        yjsSessionId: yjsSessionId,
+      );
+
+      _runtimeStates[session.userId] = _RuntimeState(
+        cookieStore: _CookieStore(session.cookies),
+        yjsSessionId: session.yjsSessionId,
+      );
+      _logger.info(
+        '[SMS] 短信登录成功 userId=$userId displayName=${session.displayName} '
+        'cookies=${_cookieSnapshotSummary(session.cookies)} '
+        'serviceCount=${session.serviceLinks.length} '
+        'yjsSessionId=${_maskShort(session.yjsSessionId)}',
+      );
+      return Success(session);
+    } on DioException catch (error, stackTrace) {
+      _logger.error('[SMS] 提交登录失败', error: error, stackTrace: stackTrace);
+      return FailureResult(
+        NetworkFailure(
+          '提交登录失败，请检查网络连接。',
+          cause: error,
+          stackTrace: stackTrace,
+        ),
+      );
+    } catch (error, stackTrace) {
+      _logger.error('[SMS] 短信登录异常', error: error, stackTrace: stackTrace);
+      return FailureResult(
+        AuthenticationFailure(
+          '短信登录失败。',
+          cause: error,
+          stackTrace: stackTrace,
+        ),
+      );
+    }
+  }
+
   // -----------------------------------------------------------------
 
   Future<Result<void>> validateSession(AppSession session) async {
