@@ -49,6 +49,22 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<bool> hasSavedCredential() async {
+    try {
+      final credential = await _credentialVault.read();
+      return credential != null;
+    } catch (error, stackTrace) {
+      developer.log(
+        'Failed to read persisted school credentials.',
+        name: 'AuthRepositoryImpl',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return false;
+    }
+  }
+
+  @override
   Future<void> logout() async {
     try {
       await _credentialVault.clear();
