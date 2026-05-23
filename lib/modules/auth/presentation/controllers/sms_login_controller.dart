@@ -128,36 +128,6 @@ class SmsLoginController extends Notifier<SmsLoginState> {
     );
   }
 
-  /// 用户在滑块上松手时调用：仅做滑块 verify，不发短信。
-  /// 返回 true 即滑块校验通过；调用方拿到 true 之后才去发短信。
-  Future<bool> verifySliderOnly({
-    required SliderTrackPayload payload,
-  }) async {
-    final session = state.smsSession;
-    final challenge = state.challenge;
-    if (session == null || challenge == null) {
-      state = state.copyWith(errorMessage: '滑块挑战已失效，请重试。');
-      return false;
-    }
-    final gateway = ref.read(schoolPortalGatewayProvider);
-    final verify = await gateway.verifySliderCaptcha(
-      session,
-      payload: payload,
-      safeSecure: challenge.safeSecure,
-    );
-    if (verify case FailureResult<SliderVerifyResult>(failure: final f)) {
-      state = state.copyWith(errorMessage: f.message);
-      return false;
-    }
-    final result = verify.requireValue();
-    if (!result.passed) {
-      // 拖错或被风控：换张图给用户重试，sheet 不关。
-      await refreshChallenge();
-      return false;
-    }
-    return true;
-  }
-
   /// 滑块通过、sheet 已经关闭后，由页面层调用一次发短信。
   /// 不进入 awaitingSlider 阶段，直接 sendingSms → smsSent 或回到 idle。
   Future<void> requestDynamicCode() async {
@@ -192,7 +162,7 @@ class SmsLoginController extends Notifier<SmsLoginState> {
     _runCooldown();
   }
 
-  /// 用户在滑块 sheet 里点"换一张"，或滑块校验失败后自动调。
+  /// 用户在滑块 sheet 里点"换一张"或滑块失败时调用。
   Future<void> refreshChallenge() async {
     final session = state.smsSession;
     if (session == null) return;

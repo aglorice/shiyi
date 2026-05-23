@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/di/app_providers.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/result/result.dart';
+import '../../../../integrations/school_portal/sso/sms_login_session.dart';
 import '../../domain/entities/app_session.dart';
 import '../../domain/entities/auth_state.dart';
 import '../../domain/entities/school_credential.dart';
@@ -20,11 +21,13 @@ class AuthController extends AsyncNotifier<AuthState> {
   Future<void> login({
     required String username,
     required String password,
+    Future<bool> Function(SmsLoginSession session)? solveCaptcha,
   }) async {
     state = const AsyncLoading();
 
     final result = await ref.read(loginWithSchoolPortalUseCaseProvider)(
       SchoolCredential(username: username.trim(), password: password),
+      solveCaptcha: solveCaptcha,
     );
 
     state = AsyncData(_mapSessionResult(result));

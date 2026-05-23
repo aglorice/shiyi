@@ -27,7 +27,13 @@ import 'sso/sso_login_orchestrator.dart';
 import 'wyu_portal_api.dart';
 
 abstract class SchoolPortalGateway {
-  Future<Result<AppSession>> login(SchoolCredential credential);
+  /// 登录学号密码。
+  /// [solveCaptcha] 在 needCaptcha=true 时被调用，由调用方负责弹滑块 sheet
+  /// 并完成 verifySliderCaptcha；返回 true 表示通过。
+  Future<Result<AppSession>> login(
+    SchoolCredential credential, {
+    Future<bool> Function(SmsLoginSession session)? solveCaptcha,
+  });
   Future<Result<AppSession>> refreshSession(SchoolCredential credential);
   Future<Result<void>> validateSession(AppSession session);
 
@@ -1830,8 +1836,11 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
   }
 
   @override
-  Future<Result<AppSession>> login(SchoolCredential credential) {
-    return _loginOrchestrator.login(credential);
+  Future<Result<AppSession>> login(
+    SchoolCredential credential, {
+    Future<bool> Function(SmsLoginSession session)? solveCaptcha,
+  }) {
+    return _loginOrchestrator.login(credential, solveCaptcha: solveCaptcha);
   }
 
   @override
@@ -4033,7 +4042,10 @@ class TestingSchoolPortalGateway implements SchoolPortalGateway {
   }
 
   @override
-  Future<Result<AppSession>> login(SchoolCredential credential) async {
+  Future<Result<AppSession>> login(
+    SchoolCredential credential, {
+    Future<bool> Function(SmsLoginSession session)? solveCaptcha,
+  }) async {
     return Success(
       AppSession(
         userId: credential.username,

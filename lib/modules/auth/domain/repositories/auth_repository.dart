@@ -1,9 +1,13 @@
 import '../../../../core/result/result.dart';
+import '../../../../integrations/school_portal/sso/sms_login_session.dart';
 import '../entities/app_session.dart';
 import '../entities/school_credential.dart';
 
 abstract class AuthRepository {
-  Future<Result<AppSession>> login(SchoolCredential credential);
+  Future<Result<AppSession>> login(
+    SchoolCredential credential, {
+    Future<bool> Function(SmsLoginSession session)? solveCaptcha,
+  });
   Future<Result<AppSession?>> restoreSession();
   Future<Result<AppSession>> refreshSession();
   Future<void> logout();

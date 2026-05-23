@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../app/di/app_providers.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../integrations/school_portal/sso/slider_captcha.dart';
 import '../../../../shared/widgets/app_snackbar.dart';
 import '../controllers/sms_login_controller.dart';
 import '../widgets/slider_captcha_sheet.dart';
@@ -172,20 +174,45 @@ class _SmsLoginPageState extends ConsumerState<SmsLoginPage> {
 
     if (!mounted) return;
     final state = ref.read(smsLoginControllerProvider);
-    if (state.challenge == null) {
+    final challenge = state.challenge;
+    if (challenge == null) {
       // requestSliderChallenge 内部已经把错误回填到 state，由 ref.listen 提示。
       return;
     }
 
-    final passed = await SliderCaptchaSheet.show(context);
-    if (passed != true) {
-      // 用户主动关闭，或滑块失败后用户放弃（理论上失败会自动换图重试）
-      return;
-    }
+    final gateway = ref.read(schoolPortalGatewayProvider);
+    final passed = await SliderCaptchaSheet.show(
+      context,
+      initialChallenge: challenge,
+      onVerify: (challenge, payload) async {
+        final session = ref.read(smsLoginControllerProvider).smsSession;
+        if (session == null) {
+          return const SliderVerifyResult(
+            passed: false,
+            message: '会话已失效',
+          );
+        }
+        final result = await gateway.verifySliderCaptcha(
+          session,
+          payload: payload,
+          safeSecure: challenge.safeSecure,
+        );
+        return result.dataOrNull ??
+            SliderVerifyResult(
+              passed: false,
+              message: result.failureOrNull?.message,
+            );
+      },
+      onRefresh: () async {
+        final session = ref.read(smsLoginControllerProvider).smsSession;
+        if (session == null) return null;
+        final result = await gateway.openSliderCaptcha(session);
+        return result.dataOrNull;
+      },
+    );
 
-    if (!mounted) return;
+    if (!mounted || passed != true) return;
     // 滑块通过 → sheet 已关 → 真发短信。
-    // 失败时由 ref.listen 弹 SnackBar 提示，状态会回到 idle，用户重发会再次出滑块。
     await notifier.requestDynamicCode();
   }
 

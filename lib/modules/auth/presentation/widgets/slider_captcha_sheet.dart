@@ -2,66 +2,83 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../integrations/school_portal/sso/slider_captcha.dart';
-import '../controllers/sms_login_controller.dart';
 
-/// 滑块验证 BottomSheet。
+/// 调用方在 sheet 里点"换一张"时执行：返回新的挑战；返回 null 视为失败。
+typedef SliderRefreshCallback = Future<SliderCaptchaChallenge?> Function();
+
+/// 调用方在 sheet 里完成拖动后执行：拿轨迹和当前 challenge 去服务端校验。
+/// 返回 [SliderVerifyResult.passed]==true 即视为通过。
+typedef SliderVerifyCallback = Future<SliderVerifyResult> Function(
+  SliderCaptchaChallenge challenge,
+  SliderTrackPayload payload,
+);
+
+/// 滑块验证 BottomSheet（控制器无关版本）。
 ///
 /// 行为对齐学校 web 端 longbow.slidercaptcha.js：
 /// - 大图固定渲染 280×155，按 `BoxFit.cover` 填满；
 /// - 小拼图渲染宽度 = `smallNatural × (280 / bigNatural)`，
-///   完全复刻 web 端的缩放公式（保持视觉与官网一致，缺口 / 拼图 一致大小）；
-/// - 拖动按钮位移驱动小拼图同步移动；mousedown / mousemove / mouseup
-///   全程采样并组装 tracks 上传。
-/// - 校验通过：sheet 自动收起；失败：换图重试。
-class SliderCaptchaSheet extends ConsumerStatefulWidget {
-  const SliderCaptchaSheet({super.key});
+///   完全复刻 web 端的缩放公式；
+/// - 拖动按钮位移驱动小拼图同步移动；按节流（≥20ms 且 ≥2px）采样轨迹。
+/// - 校验通过：sheet 自动收起；失败：调 [onRefresh] 换图重试。
+class SliderCaptchaSheet extends StatefulWidget {
+  const SliderCaptchaSheet({
+    super.key,
+    required this.initialChallenge,
+    required this.onVerify,
+    required this.onRefresh,
+  });
+
+  final SliderCaptchaChallenge initialChallenge;
+  final SliderVerifyCallback onVerify;
+  final SliderRefreshCallback onRefresh;
 
   static const double canvasWidth = 280;
   static const double canvasHeight = 155;
-
-  /// 滑块条与按钮高度（与 web 一致 ≈ 36，更紧凑视觉好看）。
   static const double sliderHeight = 36;
-
-  /// 拖动按钮宽度，这里和 moveLength 计算保持一致。
   static const double sliderButtonWidth = 36;
 
   /// 弹出 sheet 并等待"是否成功通过"。
-  static Future<bool?> show(BuildContext context) {
+  static Future<bool?> show(
+    BuildContext context, {
+    required SliderCaptchaChallenge initialChallenge,
+    required SliderVerifyCallback onVerify,
+    required SliderRefreshCallback onRefresh,
+  }) {
     return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       isDismissible: false,
       enableDrag: false,
       backgroundColor: Colors.transparent,
-      builder: (_) => const SliderCaptchaSheet(),
+      builder: (_) => SliderCaptchaSheet(
+        initialChallenge: initialChallenge,
+        onVerify: onVerify,
+        onRefresh: onRefresh,
+      ),
     );
   }
 
   @override
-  ConsumerState<SliderCaptchaSheet> createState() => _SliderCaptchaSheetState();
+  State<SliderCaptchaSheet> createState() => _SliderCaptchaSheetState();
 }
 
-class _SliderCaptchaSheetState extends ConsumerState<SliderCaptchaSheet> {
+class _SliderCaptchaSheetState extends State<SliderCaptchaSheet> {
+  late SliderCaptchaChallenge _challenge = widget.initialChallenge;
+
   /// 当前按钮（也即拼图）的位移：起点 0，最右等于 `canvasWidth - sliderButtonWidth`。
   double _offset = 0;
-
   bool _dragging = false;
+  bool _verifying = false;
+  bool _refreshing = false;
 
   /// 一次拖动开始时的 wall-clock 起点。
   DateTime? _dragStart;
-
-  /// 上一个采样点，用于做距离/时间过滤。
   _SamplePoint? _lastSample;
-
-  /// 已采样的轨迹。
   final List<SliderTrackPoint> _tracks = [];
-
-  /// 当前是否正在请求服务端校验。
-  bool _verifying = false;
 
   /// 上一次校验失败的提示。
   String? _hintMessage;
@@ -73,26 +90,20 @@ class _SliderCaptchaSheetState extends ConsumerState<SliderCaptchaSheet> {
   /// null 表示还没解到原图尺寸，渲染时按 fitHeight 兜底。
   double? _puzzleRenderWidth;
 
-  /// 当前 challenge 的解码缓存，用来对比 isSameChallenge。
+  /// 当前已经测过尺寸的 challenge，避免重复解码。
   SliderCaptchaChallenge? _decodedChallenge;
 
   @override
   void initState() {
     super.initState();
-    // 第一次构建后异步算一次。
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _ensurePuzzleSizeFor(
-          ref.read(smsLoginControllerProvider).challenge);
+      _ensurePuzzleSizeFor(_challenge);
     });
   }
 
-  /// 用 [ui.instantiateImageCodec] 拿大图 + 小图的 naturalWidth，再按 web 端
-  /// 公式 `smallNatural * (280 / bigNatural)` 算出真正的渲染宽度。
-  /// 之前直接用 `tagWidth * (280 / bigNatural)` 不对：tagWidth 不一定等于
-  /// smallImage 解码后的 naturalWidth（PNG 尾部塞了 16 字节加密残料），
-  /// 撞上后会拼图比缺口小。
-  Future<void> _ensurePuzzleSizeFor(SliderCaptchaChallenge? challenge) async {
-    if (challenge == null) return;
+  /// 用 [ui.instantiateImageCodec] 拿大图 + 小图的 naturalWidth，按 web 公式
+  /// 算出真正的渲染宽度。
+  Future<void> _ensurePuzzleSizeFor(SliderCaptchaChallenge challenge) async {
     if (identical(_decodedChallenge, challenge)) return;
     _decodedChallenge = challenge;
     try {
@@ -112,13 +123,13 @@ class _SliderCaptchaSheetState extends ConsumerState<SliderCaptchaSheet> {
             smallNatural * (SliderCaptchaSheet.canvasWidth / bigNatural);
       });
     } catch (_) {
-      // 解码失败就保留 null，由兜底的 fitHeight 渲染。
+      // 解码失败保留 null，由兜底 fitHeight 渲染。
     }
   }
 
-  /// 用于驱动 bar 文案。
   String get _barText {
     if (_verifying) return '校验中...';
+    if (_refreshing) return '加载中...';
     if (_flashState == 'success') return '验证通过';
     if (_flashState == 'fail') return _hintMessage ?? '再试一次';
     return '向右滑动填充拼图';
@@ -126,39 +137,7 @@ class _SliderCaptchaSheetState extends ConsumerState<SliderCaptchaSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final challenge = ref.watch(
-      smsLoginControllerProvider.select((s) => s.challenge),
-    );
     final theme = Theme.of(context);
-
-    // challenge 换张图时，重新算渲染宽度。
-    if (challenge != null && !identical(_decodedChallenge, challenge)) {
-      // ignore: discarded_futures
-      _ensurePuzzleSizeFor(challenge);
-    }
-
-    if (challenge == null) {
-      return Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Center(
-          child: SizedBox(
-            height: 240,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const CircularProgressIndicator(),
-                const SizedBox(height: 16),
-                Text(
-                  '正在加载验证码...',
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
     final canvasWidth = SliderCaptchaSheet.canvasWidth;
     final canvasHeight = SliderCaptchaSheet.canvasHeight;
     final sliderH = SliderCaptchaSheet.sliderHeight;
@@ -195,26 +174,14 @@ class _SliderCaptchaSheetState extends ConsumerState<SliderCaptchaSheet> {
                 IconButton(
                   tooltip: '换一张',
                   icon: const Icon(Icons.refresh_rounded),
-                  onPressed: _verifying
-                      ? null
-                      : () async {
-                          await ref
-                              .read(smsLoginControllerProvider.notifier)
-                              .refreshChallenge();
-                          _resetVisualState();
-                        },
+                  onPressed: _verifying || _refreshing ? null : _doRefresh,
                 ),
                 IconButton(
                   tooltip: '关闭',
                   icon: const Icon(Icons.close_rounded),
                   onPressed: _verifying
                       ? null
-                      : () {
-                          ref
-                              .read(smsLoginControllerProvider.notifier)
-                              .cancelSlider();
-                          Navigator.of(context).maybePop(false);
-                        },
+                      : () => Navigator.of(context).maybePop(false),
                 ),
               ],
             ),
@@ -228,7 +195,7 @@ class _SliderCaptchaSheetState extends ConsumerState<SliderCaptchaSheet> {
                 child: Stack(
                   children: [
                     Image.memory(
-                      challenge.bigImageBytes,
+                      _challenge.bigImageBytes,
                       width: canvasWidth,
                       height: canvasHeight,
                       fit: BoxFit.cover,
@@ -241,10 +208,9 @@ class _SliderCaptchaSheetState extends ConsumerState<SliderCaptchaSheet> {
                         width: _puzzleRenderWidth,
                         height: canvasHeight,
                         child: Image.memory(
-                          challenge.smallImageBytes,
+                          _challenge.smallImageBytes,
                           width: _puzzleRenderWidth,
                           height: canvasHeight,
-                          // 当还没量出 naturalWidth 时按高度兜底。
                           fit: _puzzleRenderWidth == null
                               ? BoxFit.fitHeight
                               : BoxFit.fill,
@@ -283,7 +249,6 @@ class _SliderCaptchaSheetState extends ConsumerState<SliderCaptchaSheet> {
                       ),
                     ),
                   ),
-                  // 已经走过的区域
                   Container(
                     width: _offset + btnW,
                     decoration: BoxDecoration(
@@ -357,20 +322,38 @@ class _SliderCaptchaSheetState extends ConsumerState<SliderCaptchaSheet> {
     );
   }
 
-  void _resetVisualState() {
+  Future<void> _doRefresh() async {
+    setState(() => _refreshing = true);
+    final next = await widget.onRefresh();
+    if (!mounted) return;
     setState(() {
-      _offset = 0;
-      _flashState = null;
-      _hintMessage = null;
-      _tracks.clear();
-      _lastSample = null;
-      _dragStart = null;
-      _dragging = false;
+      _refreshing = false;
+      if (next != null) {
+        _challenge = next;
+        _puzzleRenderWidth = null;
+        _decodedChallenge = null;
+      }
+      _resetTrackingFields();
     });
+    if (next != null) {
+      // 异步算新挑战的尺寸。
+      // ignore: discarded_futures
+      _ensurePuzzleSizeFor(next);
+    }
+  }
+
+  void _resetTrackingFields() {
+    _offset = 0;
+    _flashState = null;
+    _hintMessage = null;
+    _tracks.clear();
+    _lastSample = null;
+    _dragStart = null;
+    _dragging = false;
   }
 
   void _onDragStart(DragStartDetails details) {
-    if (_verifying) return;
+    if (_verifying || _refreshing) return;
     setState(() {
       _dragging = true;
       _flashState = null;
@@ -386,19 +369,16 @@ class _SliderCaptchaSheetState extends ConsumerState<SliderCaptchaSheet> {
     if (_verifying || !_dragging) return;
     final newOffset = (_offset + details.delta.dx).clamp(0.0, maxOffset);
     final now = DateTime.now();
-    final start = _dragStart;
-    if (start == null) return;
+    if (_dragStart == null) return;
 
     final a = newOffset.round();
     final b = _syntheticY(a);
     final last = _lastSample;
-    final tSinceLast = last == null
-        ? 0
-        : now.difference(last.t).inMilliseconds;
+    final tSinceLast =
+        last == null ? 0 : now.difference(last.t).inMilliseconds;
 
     setState(() => _offset = newOffset);
 
-    // 节流：与 web 端一致 —— 时间差 ≥ 20ms 且距离 ≥ 2px 才采样。
     if (last != null) {
       final dx = a - last.a;
       final dy = b - last.b;
@@ -413,8 +393,7 @@ class _SliderCaptchaSheetState extends ConsumerState<SliderCaptchaSheet> {
 
   Future<void> _onDragEnd() async {
     if (!_dragging || _verifying) return;
-    final start = _dragStart;
-    if (start == null) {
+    if (_dragStart == null) {
       setState(() => _dragging = false);
       return;
     }
@@ -436,34 +415,37 @@ class _SliderCaptchaSheetState extends ConsumerState<SliderCaptchaSheet> {
       tracks: List<SliderTrackPoint>.unmodifiable(_tracks),
     );
 
-    final passed = await ref
-        .read(smsLoginControllerProvider.notifier)
-        .verifySliderOnly(payload: payload);
+    SliderVerifyResult? result;
+    try {
+      result = await widget.onVerify(_challenge, payload);
+    } catch (_) {
+      // onVerify 内部应自行 SnackBar 提示，这里只复位 sheet 状态。
+    }
 
     if (!mounted) return;
 
-    if (passed) {
+    if (result?.passed == true) {
       setState(() {
         _flashState = 'success';
         _verifying = false;
       });
       await Future.delayed(const Duration(milliseconds: 600));
       if (mounted) Navigator.of(context).maybePop(true);
-    } else {
-      setState(() {
-        _flashState = 'fail';
-        _hintMessage = ref.read(smsLoginControllerProvider).errorMessage;
-        _verifying = false;
-      });
-      await Future.delayed(const Duration(milliseconds: 700));
-      if (mounted) {
-        _resetVisualState();
-      }
+      return;
     }
+
+    setState(() {
+      _flashState = 'fail';
+      _hintMessage = result?.message;
+      _verifying = false;
+    });
+    await Future.delayed(const Duration(milliseconds: 700));
+    if (!mounted) return;
+    // 校验失败：自动换图给用户重试。
+    await _doRefresh();
   }
 
   /// 拖动过程中给 b（Y 偏移）加一点点正弦抖动，模拟人手。
-  /// 完全为 0 也能通过（offset=5），但少量抖动让风控不那么敏感。
   int _syntheticY(int a) {
     final phase = a / 12.0;
     return (math.sin(phase) * 1.8).round();

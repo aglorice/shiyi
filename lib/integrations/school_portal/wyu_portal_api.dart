@@ -50,7 +50,12 @@ class WyuPortalApi {
   final Random _random = Random();
   final Map<String, _RuntimeState> _runtimeStates = {};
 
-  Future<Result<AppSession>> login(SchoolCredential credential) async {
+  Future<Result<AppSession>> login(
+    SchoolCredential credential, {
+    /// 当 checkNeedCaptcha 返回 true 时调用：把 cookies 共享出去让外部弹滑块 sheet。
+    /// 返回 true 视为滑块通过，继续 POST 登录；返回 false 视为放弃。
+    Future<bool> Function(SmsLoginSession session)? solveCaptcha,
+  }) async {
     if (credential.username.trim().isEmpty || credential.password.isEmpty) {
       return const FailureResult(AuthenticationFailure('学号和密码不能为空。'));
     }
@@ -78,6 +83,37 @@ class WyuPortalApi {
         'lt=${_maskShort(formData.lt)} '
         'execution=${_maskShort(formData.execution, keepStart: 10, keepEnd: 10)}',
       );
+
+      // 先探针：服务端是否要求滑块。
+      final needCaptcha = await checkNeedCaptcha(credential.username.trim());
+      if (needCaptcha) {
+        _logger.info('[SSO] checkNeedCaptcha=true，准备滑块');
+        if (solveCaptcha == null) {
+          return const FailureResult(
+            AuthenticationFailure('当前账号需要滑块验证，请用应用最新版本登录。'),
+          );
+        }
+        // 触发服务端 session 上的滑块标记。
+        await _get(
+          Uri.parse(
+            'https://authserver.wyu.edu.cn/authserver/common/toSliderCaptcha.htl',
+          ),
+          cookieStore,
+        );
+        final sharedSession = SmsLoginSession(
+          pwdEncryptSalt: formData.pwdEncryptSalt,
+          lt: formData.lt,
+          execution: formData.execution,
+          cookies: cookieStore.snapshot(),
+        );
+        final passed = await solveCaptcha(sharedSession);
+        if (!passed) {
+          return const FailureResult(AuthenticationFailure('滑块未通过，已取消登录。'));
+        }
+        // 把滑块流期间累计到的新 cookies 合并回来。
+        cookieStore.seed(sharedSession.cookies);
+      }
+
       final payload = {
         'username': credential.username.trim(),
         'password': _transformer.encryptPassword(
@@ -176,6 +212,43 @@ class WyuPortalApi {
   }
 
   // -------------------------- 短信验证码登录 --------------------------
+
+  /// 学号密码登录前的"是否需要图形/滑块验证"探针。
+  /// 服务端在某些条件下（异常 IP、连续失败等）会强制要求滑块；
+  /// 这个接口用于在 POST 登录之前先决定要不要走 captcha 流。
+  ///
+  /// 返回 true 即需要滑块；false 表示直接 POST 即可。
+  Future<bool> checkNeedCaptcha(String username) async {
+    try {
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final response = await _get(
+        Uri.parse(
+          'https://authserver.wyu.edu.cn/authserver/checkNeedCaptcha.htl',
+        ),
+        _CookieStore(),
+        queryParameters: {'username': username, '_': '$ts'},
+      );
+      if (response.statusCode != 200) return false;
+      final body = response.body.trim();
+      if (body.isEmpty) return false;
+      try {
+        final json = jsonDecode(body);
+        if (json is Map<String, dynamic>) {
+          final isNeed = json['isNeed'];
+          return isNeed == true || isNeed == 'true';
+        }
+      } catch (_) {
+        // 不是 JSON 就当不需要。
+      }
+      return false;
+    } on DioException catch (error) {
+      _logger.warn('[SSO] checkNeedCaptcha 网络失败，默认按不需要处理：$error');
+      return false;
+    } catch (error) {
+      _logger.warn('[SSO] checkNeedCaptcha 异常，默认按不需要处理：$error');
+      return false;
+    }
+  }
 
   /// 打开短信登录页，拿到 lt / execution / pwdEncryptSalt 与初始 cookies。
   /// 后续滑块、发短信、提交登录都会基于这同一份 cookies 继续累加。

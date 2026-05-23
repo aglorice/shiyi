@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import '../../../core/error/failure.dart';
 import '../../../core/result/result.dart';
 import '../../../integrations/school_portal/school_portal_gateway.dart';
+import '../../../integrations/school_portal/sso/sms_login_session.dart';
 import '../domain/entities/app_session.dart';
 import '../domain/entities/school_credential.dart';
 import '../domain/repositories/auth_repository.dart';
@@ -23,8 +24,12 @@ class AuthRepositoryImpl implements AuthRepository {
   final SessionStore _sessionStore;
 
   @override
-  Future<Result<AppSession>> login(SchoolCredential credential) async {
-    final result = await _gateway.login(credential);
+  Future<Result<AppSession>> login(
+    SchoolCredential credential, {
+    Future<bool> Function(SmsLoginSession session)? solveCaptcha,
+  }) async {
+    final result =
+        await _gateway.login(credential, solveCaptcha: solveCaptcha);
     if (result case Success<AppSession>(data: final session)) {
       await _sessionStore.save(session);
       try {

@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../app/di/app_providers.dart';
+import '../../../../integrations/school_portal/sso/slider_captcha.dart';
+import '../../../../integrations/school_portal/sso/sms_login_session.dart';
 import '../../domain/entities/auth_state.dart';
 import '../controllers/auth_controller.dart';
+import '../widgets/slider_captcha_sheet.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -149,11 +153,44 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 
   void _submit() {
-    ref
-        .read(authControllerProvider.notifier)
-        .login(
-          username: _usernameController.text,
-          password: _passwordController.text,
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text;
+    ref.read(authControllerProvider.notifier).login(
+          username: username,
+          password: password,
+          solveCaptcha: (session) => _solveCaptcha(session),
         );
+  }
+
+  /// 当服务端要求滑块时被调用：拉一张挑战 → 弹 sheet → 用户拖通过返回 true。
+  /// session 在过程中累计的新 cookies 会被回写。
+  Future<bool> _solveCaptcha(SmsLoginSession session) async {
+    if (!mounted) return false;
+    final gateway = ref.read(schoolPortalGatewayProvider);
+    final challengeResult = await gateway.openSliderCaptcha(session);
+    final challenge = challengeResult.dataOrNull;
+    if (!mounted || challenge == null) return false;
+
+    final passed = await SliderCaptchaSheet.show(
+      context,
+      initialChallenge: challenge,
+      onVerify: (challenge, payload) async {
+        final result = await gateway.verifySliderCaptcha(
+          session,
+          payload: payload,
+          safeSecure: challenge.safeSecure,
+        );
+        return result.dataOrNull ??
+            SliderVerifyResult(
+              passed: false,
+              message: result.failureOrNull?.message,
+            );
+      },
+      onRefresh: () async {
+        final result = await gateway.openSliderCaptcha(session);
+        return result.dataOrNull;
+      },
+    );
+    return passed == true;
   }
 }
