@@ -1,0 +1,223 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../../app/di/app_providers.dart';
+import '../../../../core/result/result.dart';
+import '../../../../integrations/school_portal/sso/slider_captcha.dart';
+import '../../../../integrations/school_portal/sso/sms_login_session.dart';
+
+/// 短信登录页的整体阶段。
+enum SmsLoginPhase {
+  /// 初始空白：未做任何动作。
+  idle,
+
+  /// 已经请求"获取验证码"，但还未通过滑块。
+  /// 滑块 sheet 此时应当展示，用户在拖。
+  awaitingSlider,
+
+  /// 滑块已通过，正在向服务端请求发短信。
+  sendingSms,
+
+  /// 短信已发出，进入 60s 倒计时；用户填验证码。
+  smsSent,
+
+  /// 用户点了"登录"，正在提交。
+  loggingIn,
+}
+
+/// 短信登录页的对外状态。
+class SmsLoginState {
+  const SmsLoginState({
+    this.phase = SmsLoginPhase.idle,
+    this.smsSession,
+    this.challenge,
+    this.errorMessage,
+    this.cooldownSeconds = 0,
+  });
+
+  final SmsLoginPhase phase;
+  final SmsLoginSession? smsSession;
+  final SliderCaptchaChallenge? challenge;
+  final String? errorMessage;
+
+  /// 距离下一次可重发短信的秒数；0 表示可发。
+  final int cooldownSeconds;
+
+  bool get canSendCode =>
+      cooldownSeconds == 0 &&
+      phase != SmsLoginPhase.awaitingSlider &&
+      phase != SmsLoginPhase.sendingSms;
+
+  SmsLoginState copyWith({
+    SmsLoginPhase? phase,
+    SmsLoginSession? smsSession,
+    bool clearChallenge = false,
+    SliderCaptchaChallenge? challenge,
+    bool clearError = false,
+    String? errorMessage,
+    int? cooldownSeconds,
+  }) {
+    return SmsLoginState(
+      phase: phase ?? this.phase,
+      smsSession: smsSession ?? this.smsSession,
+      challenge: clearChallenge ? null : (challenge ?? this.challenge),
+      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+      cooldownSeconds: cooldownSeconds ?? this.cooldownSeconds,
+    );
+  }
+}
+
+final smsLoginControllerProvider =
+    NotifierProvider<SmsLoginController, SmsLoginState>(SmsLoginController.new);
+
+class SmsLoginController extends Notifier<SmsLoginState> {
+  @override
+  SmsLoginState build() => const SmsLoginState();
+
+  /// 用户点"获取验证码"。
+  ///
+  /// 流程：startSmsLogin → openSliderCaptcha → 进入 awaitingSlider 阶段，
+  /// 由 UI 层弹滑块 sheet 让用户拖。
+  Future<void> requestSliderChallenge({required String mobile}) async {
+    if (mobile.trim().length != 11) {
+      state = state.copyWith(errorMessage: '请输入 11 位手机号');
+      return;
+    }
+    if (state.phase == SmsLoginPhase.awaitingSlider ||
+        state.phase == SmsLoginPhase.sendingSms) {
+      return;
+    }
+
+    state = state.copyWith(
+      phase: SmsLoginPhase.awaitingSlider,
+      clearError: true,
+    );
+
+    final gateway = ref.read(schoolPortalGatewayProvider);
+    final startResult = await gateway.startSmsLogin();
+    if (startResult case FailureResult<SmsLoginSession>(failure: final f)) {
+      state = state.copyWith(
+        phase: SmsLoginPhase.idle,
+        errorMessage: f.message,
+      );
+      return;
+    }
+
+    final smsSession = startResult.requireValue();
+    final challengeResult = await gateway.openSliderCaptcha(smsSession);
+    if (challengeResult
+        case FailureResult<SliderCaptchaChallenge>(failure: final f)) {
+      state = state.copyWith(
+        phase: SmsLoginPhase.idle,
+        smsSession: smsSession,
+        errorMessage: f.message,
+      );
+      return;
+    }
+
+    state = state.copyWith(
+      phase: SmsLoginPhase.awaitingSlider,
+      smsSession: smsSession,
+      challenge: challengeResult.requireValue(),
+    );
+  }
+
+  /// 用户在滑块上松手时调用。返回 true 即通过。
+  Future<bool> submitSlider({
+    required SliderTrackPayload payload,
+  }) async {
+    final session = state.smsSession;
+    final challenge = state.challenge;
+    if (session == null || challenge == null) {
+      state = state.copyWith(errorMessage: '滑块挑战已失效，请重试。');
+      return false;
+    }
+    final gateway = ref.read(schoolPortalGatewayProvider);
+    final verify = await gateway.verifySliderCaptcha(
+      session,
+      payload: payload,
+      safeSecure: challenge.safeSecure,
+    );
+    if (verify case FailureResult<SliderVerifyResult>(failure: final f)) {
+      state = state.copyWith(errorMessage: f.message);
+      return false;
+    }
+    final result = verify.requireValue();
+    if (!result.passed) {
+      // 拖错或被风控，重新换张图。
+      await refreshChallenge();
+      return false;
+    }
+
+    // TODO(SMS-FLOW): 滑块通过后，调用 gateway 的 sendDynamicCode(mobile, smsSession)。
+    // 这一步的请求体（POST /authserver/dynamicCode）等用户抓包后再补全。
+    state = state.copyWith(phase: SmsLoginPhase.sendingSms, clearChallenge: true);
+    state = state.copyWith(
+      phase: SmsLoginPhase.smsSent,
+      cooldownSeconds: 60,
+    );
+    _runCooldown();
+    return true;
+  }
+
+  /// 用户在滑块 sheet 里点"换一张"，或滑块校验失败后自动调。
+  Future<void> refreshChallenge() async {
+    final session = state.smsSession;
+    if (session == null) return;
+    final gateway = ref.read(schoolPortalGatewayProvider);
+    final challengeResult = await gateway.openSliderCaptcha(session);
+    if (challengeResult
+        case FailureResult<SliderCaptchaChallenge>(failure: final f)) {
+      state = state.copyWith(errorMessage: f.message);
+      return;
+    }
+    state = state.copyWith(
+      challenge: challengeResult.requireValue(),
+      clearError: true,
+    );
+  }
+
+  /// 用户在滑块 sheet 上点关闭。
+  void cancelSlider() {
+    state = state.copyWith(
+      phase: SmsLoginPhase.idle,
+      clearChallenge: true,
+    );
+  }
+
+  /// 用户最终点"登录"。
+  Future<void> submitLogin({
+    required String mobile,
+    required String code,
+  }) async {
+    if (state.smsSession == null) {
+      state = state.copyWith(errorMessage: '请先获取验证码。');
+      return;
+    }
+    if (code.trim().length != 6) {
+      state = state.copyWith(errorMessage: '请输入 6 位验证码。');
+      return;
+    }
+    state = state.copyWith(phase: SmsLoginPhase.loggingIn, clearError: true);
+
+    // TODO(SMS-FLOW): 真正登录提交（POST /authserver/login，带 mobile/dynamicCode/
+    // execution/lt/cllt=dynamicLogin）等用户抓包补全后再调用 gateway，并把
+    // 拿到的 cookies 转化为 AppSession 走 authControllerProvider.replaceSession。
+    state = state.copyWith(
+      phase: SmsLoginPhase.smsSent,
+      errorMessage: '短信登录后端尚未接入，请等待开发完成。',
+    );
+  }
+
+  void _runCooldown() {
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 1));
+      final remaining = state.cooldownSeconds - 1;
+      if (remaining <= 0) {
+        state = state.copyWith(cooldownSeconds: 0);
+        return false;
+      }
+      state = state.copyWith(cooldownSeconds: remaining);
+      return true;
+    });
+  }
+}

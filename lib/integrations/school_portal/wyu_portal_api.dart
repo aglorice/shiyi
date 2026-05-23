@@ -13,6 +13,8 @@ import '../../modules/auth/domain/entities/school_credential.dart';
 import '../../modules/services/domain/entities/service_card_data.dart';
 import '../../modules/services/domain/entities/service_launch_data.dart';
 import 'sso/credential_transformer.dart';
+import 'sso/slider_captcha.dart';
+import 'sso/sms_login_session.dart';
 
 class WyuPortalApi {
   WyuPortalApi({
@@ -172,6 +174,167 @@ class WyuPortalApi {
       );
     }
   }
+
+  // -------------------------- 短信验证码登录 --------------------------
+
+  /// 打开短信登录页，拿到 lt / execution / pwdEncryptSalt 与初始 cookies。
+  /// 后续滑块、发短信、提交登录都会基于这同一份 cookies 继续累加。
+  Future<Result<SmsLoginSession>> startSmsLogin() async {
+    final cookieStore = _CookieStore();
+    try {
+      _logger.info('[SMS] 打开短信登录页');
+      final loginPage = await _get(
+        _buildLoginUri(service: _portalServiceUrl)
+            .replace(queryParameters: {
+          'service': _portalServiceUrl,
+          'type': 'dynamicLogin',
+        }),
+        cookieStore,
+      );
+      if (loginPage.statusCode != 200) {
+        return FailureResult(
+          AuthenticationFailure('登录页访问失败，状态码 ${loginPage.statusCode}。'),
+        );
+      }
+      final formData = _parseLoginForm(loginPage.body);
+
+      // 触发服务端往 session 里放滑块需要的标记。
+      await _get(
+        Uri.parse(
+          'https://authserver.wyu.edu.cn/authserver/common/toSliderCaptcha.htl',
+        ),
+        cookieStore,
+      );
+
+      return Success(
+        SmsLoginSession(
+          pwdEncryptSalt: formData.pwdEncryptSalt,
+          lt: formData.lt,
+          execution: formData.execution,
+          cookies: cookieStore.snapshot(),
+        ),
+      );
+    } on DioException catch (error, stackTrace) {
+      _logger.error('[SMS] 启动短信登录失败', error: error, stackTrace: stackTrace);
+      return FailureResult(
+        NetworkFailure('访问学校登录页失败。', cause: error, stackTrace: stackTrace),
+      );
+    } catch (error, stackTrace) {
+      _logger.error('[SMS] 启动短信登录异常', error: error, stackTrace: stackTrace);
+      return FailureResult(
+        AuthenticationFailure(
+          '短信登录初始化失败。',
+          cause: error,
+          stackTrace: stackTrace,
+        ),
+      );
+    }
+  }
+
+  /// 拉一张滑块挑战。每次失败后可以重复调用以换图。
+  Future<Result<SliderCaptchaChallenge>> openSliderCaptcha(
+    SmsLoginSession smsSession,
+  ) async {
+    final cookieStore = _CookieStore(smsSession.cookies);
+    try {
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final response = await _get(
+        Uri.parse(
+          'https://authserver.wyu.edu.cn/authserver/common/openSliderCaptcha.htl',
+        ),
+        cookieStore,
+        queryParameters: {'_': '$ts'},
+      );
+      smsSession.cookies = cookieStore.snapshot();
+      if (response.statusCode != 200) {
+        return FailureResult(
+          AuthenticationFailure('拉取滑块图片失败，状态码 ${response.statusCode}。'),
+        );
+      }
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      final challenge = SliderCaptchaChallenge.fromJson(json);
+      _logger.debug(
+        '[SMS] 滑块图片就绪 tagWidth=${challenge.tagWidth} '
+        'safeSecure=${_maskShort(challenge.safeSecure)}',
+      );
+      return Success(challenge);
+    } on DioException catch (error, stackTrace) {
+      _logger.error('[SMS] 拉取滑块失败', error: error, stackTrace: stackTrace);
+      return FailureResult(
+        NetworkFailure('拉取滑块图片失败。', cause: error, stackTrace: stackTrace),
+      );
+    } on FormatException catch (error, stackTrace) {
+      return FailureResult(
+        AuthenticationFailure(
+          '滑块响应解析失败：${error.message}',
+          cause: error,
+          stackTrace: stackTrace,
+        ),
+      );
+    } catch (error, stackTrace) {
+      _logger.error('[SMS] 拉取滑块异常', error: error, stackTrace: stackTrace);
+      return FailureResult(
+        AuthenticationFailure(
+          '拉取滑块图片失败。',
+          cause: error,
+          stackTrace: stackTrace,
+        ),
+      );
+    }
+  }
+
+  /// 提交滑动轨迹。会重用 [smsSession] 的 cookies，验证通过后服务端在
+  /// session 里盖通过标记，后续 dynamicCode / login 直接走 cookie 即可。
+  Future<Result<SliderVerifyResult>> verifySliderCaptcha(
+    SmsLoginSession smsSession, {
+    required SliderTrackPayload payload,
+    required String safeSecure,
+  }) async {
+    final cookieStore = _CookieStore(smsSession.cookies);
+    try {
+      final body = jsonEncode(payload.toJson());
+      final sign = _transformer.encryptPassword(body, safeSecure);
+      _logger.debug(
+        '[SMS] 提交滑块校验 moveLength=${payload.moveLength} '
+        'tracks=${payload.tracks.length} sign=${_maskShort(sign)}',
+      );
+      final response = await _postForm(
+        Uri.parse(
+          'https://authserver.wyu.edu.cn/authserver/common/verifySliderCaptcha.htl',
+        ),
+        {'sign': sign},
+        cookieStore,
+      );
+      smsSession.cookies = cookieStore.snapshot();
+      if (response.statusCode != 200) {
+        return FailureResult(
+          AuthenticationFailure('滑块校验失败，状态码 ${response.statusCode}。'),
+        );
+      }
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      final result = SliderVerifyResult.fromJson(json);
+      _logger.info(
+        '[SMS] 滑块校验返回 passed=${result.passed} msg=${result.message ?? ''}',
+      );
+      return Success(result);
+    } on DioException catch (error, stackTrace) {
+      _logger.error('[SMS] 滑块校验失败', error: error, stackTrace: stackTrace);
+      return FailureResult(
+        NetworkFailure('滑块校验失败。', cause: error, stackTrace: stackTrace),
+      );
+    } catch (error, stackTrace) {
+      _logger.error('[SMS] 滑块校验异常', error: error, stackTrace: stackTrace);
+      return FailureResult(
+        AuthenticationFailure(
+          '滑块校验失败。',
+          cause: error,
+          stackTrace: stackTrace,
+        ),
+      );
+    }
+  }
+
+  // -----------------------------------------------------------------
 
   Future<Result<void>> validateSession(AppSession session) async {
     if (session.cookies.isEmpty) {

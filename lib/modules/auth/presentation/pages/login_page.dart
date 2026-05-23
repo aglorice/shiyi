@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../domain/entities/auth_state.dart';
 import '../controllers/auth_controller.dart';
@@ -123,7 +124,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: isSubmitting
+                        ? null
+                        : () => context.push('/login/sms'),
+                    child: const Text('使用手机号验证码登录'),
+                  ),
+                  const SizedBox(height: 24),
                   Text(
                     '拾取校园点滴，邑你相伴同行',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(

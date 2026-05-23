@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../modules/auth/presentation/controllers/auth_controller.dart';
 import '../../modules/auth/presentation/pages/login_page.dart';
+import '../../modules/auth/presentation/pages/sms_login_page.dart';
 import '../../modules/electricity/presentation/pages/electricity_page.dart';
 import '../../modules/exams/presentation/pages/exams_page.dart';
 import '../../modules/grades/presentation/pages/grades_page.dart';
@@ -42,6 +43,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     initialLocation: '/',
     routes: [
       GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
+      GoRoute(
+        path: '/login/sms',
+        builder: (context, state) => const SmsLoginPage(),
+      ),
       StatefulShellRoute(
         builder: (context, state, navigationShell) {
           return CampusShell(navigationShell: navigationShell);
@@ -218,7 +223,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
     ],
     redirect: (context, state) {
-      final isLogin = state.matchedLocation == '/login';
+      final loc = state.matchedLocation;
+      final isLogin = loc == '/login' || loc == '/login/sms';
       final isAuthenticated = authAsync.value?.isAuthenticated ?? false;
       final isPublicNoticeRoute =
           state.matchedLocation == '/notices' ||

@@ -21,6 +21,8 @@ import '../../modules/schedule/domain/entities/schedule_snapshot.dart';
 import '../../modules/services/domain/entities/service_card_data.dart';
 import '../../modules/services/domain/entities/service_launch_data.dart';
 import 'sso/session_validator.dart';
+import 'sso/slider_captcha.dart';
+import 'sso/sms_login_session.dart';
 import 'sso/sso_login_orchestrator.dart';
 import 'wyu_portal_api.dart';
 
@@ -28,6 +30,21 @@ abstract class SchoolPortalGateway {
   Future<Result<AppSession>> login(SchoolCredential credential);
   Future<Result<AppSession>> refreshSession(SchoolCredential credential);
   Future<Result<void>> validateSession(AppSession session);
+
+  /// 启动短信登录流程，拿到一个用于贯穿后续滑块/发短信/登录三步的 [SmsLoginSession]。
+  Future<Result<SmsLoginSession>> startSmsLogin();
+
+  /// 拉取一张滑块挑战图（可重复调用以换图）。
+  Future<Result<SliderCaptchaChallenge>> openSliderCaptcha(
+    SmsLoginSession smsSession,
+  );
+
+  /// 提交滑动轨迹做校验。errorCode == 1 即通过。
+  Future<Result<SliderVerifyResult>> verifySliderCaptcha(
+    SmsLoginSession smsSession, {
+    required SliderTrackPayload payload,
+    required String safeSecure,
+  });
   Future<Result<ScheduleSnapshot>> fetchSchedule(
     AppSession session, {
     String? termId,
@@ -1812,6 +1829,31 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
   @override
   Future<Result<void>> validateSession(AppSession session) {
     return _sessionValidator.validate(session);
+  }
+
+  @override
+  Future<Result<SmsLoginSession>> startSmsLogin() {
+    return _portalApi.startSmsLogin();
+  }
+
+  @override
+  Future<Result<SliderCaptchaChallenge>> openSliderCaptcha(
+    SmsLoginSession smsSession,
+  ) {
+    return _portalApi.openSliderCaptcha(smsSession);
+  }
+
+  @override
+  Future<Result<SliderVerifyResult>> verifySliderCaptcha(
+    SmsLoginSession smsSession, {
+    required SliderTrackPayload payload,
+    required String safeSecure,
+  }) {
+    return _portalApi.verifySliderCaptcha(
+      smsSession,
+      payload: payload,
+      safeSecure: safeSecure,
+    );
   }
 
   @override
@@ -4092,5 +4134,26 @@ class TestingSchoolPortalGateway implements SchoolPortalGateway {
   @override
   Future<Result<void>> validateSession(AppSession session) async {
     return const Success(null);
+  }
+
+  @override
+  Future<Result<SmsLoginSession>> startSmsLogin() async {
+    return const FailureResult(BusinessFailure('测试环境未接入短信登录。'));
+  }
+
+  @override
+  Future<Result<SliderCaptchaChallenge>> openSliderCaptcha(
+    SmsLoginSession smsSession,
+  ) async {
+    return const FailureResult(BusinessFailure('测试环境未接入短信登录。'));
+  }
+
+  @override
+  Future<Result<SliderVerifyResult>> verifySliderCaptcha(
+    SmsLoginSession smsSession, {
+    required SliderTrackPayload payload,
+    required String safeSecure,
+  }) async {
+    return const FailureResult(BusinessFailure('测试环境未接入短信登录。'));
   }
 }
