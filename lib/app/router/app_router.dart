@@ -19,6 +19,10 @@ import '../../modules/home/presentation/pages/home_page.dart';
 import '../../modules/notices/domain/entities/campus_notice.dart';
 import '../../modules/notices/presentation/pages/notice_detail_page.dart';
 import '../../modules/notices/presentation/pages/notices_page.dart';
+import '../../modules/personal_info/presentation/pages/app_access_logs_page.dart';
+import '../../modules/personal_info/presentation/pages/auth_logs_page.dart';
+import '../../modules/personal_info/presentation/pages/online_sessions_page.dart';
+import '../../modules/personal_info/presentation/pages/password_logs_page.dart';
 import '../../modules/personal_info/presentation/pages/personal_info_page.dart';
 import '../../modules/profile/presentation/pages/about_app_page.dart';
 import '../../modules/profile/presentation/pages/profile_page.dart';
@@ -127,6 +131,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/personal-info',
         builder: (context, state) => const PersonalInfoPage(),
+      ),
+      GoRoute(
+        path: '/personal-info/online',
+        builder: (context, state) => const OnlineSessionsPage(),
+      ),
+      GoRoute(
+        path: '/personal-info/auth-logs',
+        builder: (context, state) => const AuthLogsPage(),
+      ),
+      GoRoute(
+        path: '/personal-info/app-logs',
+        builder: (context, state) => const AppAccessLogsPage(),
+      ),
+      GoRoute(
+        path: '/personal-info/password-logs',
+        builder: (context, state) => const PasswordLogsPage(),
       ),
       GoRoute(
         path: '/browser',
