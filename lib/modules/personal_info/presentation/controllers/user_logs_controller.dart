@@ -73,6 +73,20 @@ class UserLogsController extends Notifier<UserLogsState> {
     );
   }
 
+  /// 踢出指定 [id] 的在线会话。
+  /// 返回 [KickOnlineResult]：调用方负责响应 selfKicked（清本地登录态）。
+  Future<KickOnlineResult> kickOnlineSession(String id) async {
+    final session = await _readSession();
+    if (session == null) return KickOnlineResult.error;
+    final result = await ref
+        .read(schoolPortalGatewayProvider)
+        .kickOnlineSession(session, id: id);
+    if (result == KickOnlineResult.success) {
+      await refreshOnline();
+    }
+    return result;
+  }
+
   Future<void> refreshLogs(UserLogType type) async {
     void apply(AsyncValue<UserLogPage> v) {
       switch (type) {

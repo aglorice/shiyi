@@ -55,6 +55,12 @@ abstract class SchoolPortalGateway {
   /// 拉当前在线会话列表。
   Future<Result<List<OnlineSession>>> queryOnlineSessions(AppSession session);
 
+  /// 踢出某个在线会话。可能踢的是当前 session（参见 [KickOnlineResult.selfKicked]）。
+  Future<KickOnlineResult> kickOnlineSession(
+    AppSession session, {
+    required String id,
+  });
+
   /// IP 归属地查询。返回 null 视为未知。
   Future<String?> lookupIpLocation(String ip);
 
@@ -1899,6 +1905,14 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
     AppSession session,
   ) {
     return _portalApi.queryOnlineSessions(session);
+  }
+
+  @override
+  Future<KickOnlineResult> kickOnlineSession(
+    AppSession session, {
+    required String id,
+  }) {
+    return _portalApi.kickOnlineSession(session, id: id);
   }
 
   @override
@@ -4255,6 +4269,14 @@ class TestingSchoolPortalGateway implements SchoolPortalGateway {
     AppSession session,
   ) async {
     return const FailureResult(BusinessFailure('测试环境未接入在线会话。'));
+  }
+
+  @override
+  Future<KickOnlineResult> kickOnlineSession(
+    AppSession session, {
+    required String id,
+  }) async {
+    return KickOnlineResult.error;
   }
 
   @override

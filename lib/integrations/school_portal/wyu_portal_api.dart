@@ -746,6 +746,48 @@ class WyuPortalApi {
     }
   }
 
+  /// 踢出某个在线会话。
+  /// 返回值见 [KickOnlineResult]。如果踢的是当前 session，服务端会同步
+  /// 让 cookies 过期并返回 302；调用方应当视为登出当前账号。
+  Future<KickOnlineResult> kickOnlineSession(
+    AppSession session, {
+    required String id,
+  }) async {
+    final state = _stateForSession(session);
+    try {
+      final response = await _postJson(
+        Uri.parse(
+          'https://authserver.wyu.edu.cn/personalInfo/UserOnline/user/removeUserOnline',
+        ).replace(queryParameters: {'id': id}),
+        {'n': _random.nextDouble().toString()},
+        state.cookieStore,
+      );
+      // 踢自己：302 重定向到登录页。
+      if (response.statusCode == 302) {
+        _runtimeStates.remove(session.userId);
+        return KickOnlineResult.selfKicked;
+      }
+      if (response.statusCode != 200) {
+        return KickOnlineResult.error;
+      }
+      try {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        final code = json['code']?.toString();
+        if (code == '0') {
+          return KickOnlineResult.success;
+        }
+        return KickOnlineResult.error;
+      } catch (_) {
+        // 主体 JSON 解析失败但状态 200，认为成功（极少数情况）。
+        return KickOnlineResult.success;
+      }
+    } on DioException {
+      return KickOnlineResult.error;
+    } catch (_) {
+      return KickOnlineResult.error;
+    }
+  }
+
   /// 用学校 IP 归属地查询（无需登录态）。
   /// 返回 null 表示查询失败或拿不到。
   Future<String?> lookupIpLocation(String ip) async {

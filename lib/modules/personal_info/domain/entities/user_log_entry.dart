@@ -66,6 +66,13 @@ class UserLogPage {
   final List<UserLogEntry> items;
 }
 
+/// 踢出在线会话的结果。
+/// - [success]：踢成功，刷新列表即可。
+/// - [selfKicked]：踢的就是当前 session，服务端已经让 cookies 失效，
+///   调用方应该走登出登录、回登录页的流程。
+/// - [error]：网络错误或服务端返回非 0 code。
+enum KickOnlineResult { success, selfKicked, error }
+
 /// 「当前在线」条目。结构与 authentication 日志近似但精简了一点。
 class OnlineSession {
   const OnlineSession({

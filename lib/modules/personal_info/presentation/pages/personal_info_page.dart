@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../shared/widgets/app_snackbar.dart';
 import '../../../../shared/widgets/page_section.dart';
+import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../domain/entities/user_log_entry.dart';
 import '../controllers/user_logs_controller.dart';
 import '../widgets/ip_chip.dart';
@@ -81,9 +84,77 @@ class _OnlineSection extends ConsumerWidget {
         ),
         children: list.isEmpty
             ? [const _EmptyRow(message: '暂无在线会话')]
-            : list.map((s) => _OnlineTile(session: s)).toList(),
+            : list
+                .map((s) => _OnlineTile(
+                      session: s,
+                      onKick: () => _confirmKick(context, ref, s),
+                    ))
+                .toList(),
       ),
     );
+  }
+
+  Future<void> _confirmKick(
+    BuildContext context,
+    WidgetRef ref,
+    OnlineSession session,
+  ) async {
+    final isSelf = session.isCurrent;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(isSelf ? '退出当前登录' : '踢出该登录'),
+        content: Text(
+          isSelf
+              ? '这是当前正在使用的会话，踢出后会立即返回登录页。是否继续？'
+              : '将让 ${_shortUa(session.userAgent)} 在 ${session.ip} 上的登录立刻失效，是否继续？',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(isSelf ? '退出登录' : '确定踢出'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final result = await ref
+        .read(userLogsControllerProvider.notifier)
+        .kickOnlineSession(session.id);
+
+    if (!context.mounted) return;
+    switch (result) {
+      case KickOnlineResult.success:
+        AppSnackBar.show(
+          context,
+          message: '已踢出该会话',
+          tone: AppSnackBarTone.success,
+        );
+      case KickOnlineResult.selfKicked:
+        // 自己被踢：清本地 + 跳登录页。
+        await ref.read(authControllerProvider.notifier).logout();
+        if (!context.mounted) return;
+        context.go('/login');
+        AppSnackBar.show(
+          context,
+          message: '已退出当前登录',
+          tone: AppSnackBarTone.info,
+        );
+      case KickOnlineResult.error:
+        AppSnackBar.show(
+          context,
+          message: '操作失败，请稍后重试',
+          tone: AppSnackBarTone.error,
+        );
+    }
   }
 }
 
@@ -125,9 +196,10 @@ class _LogSection<T> extends StatelessWidget {
 }
 
 class _OnlineTile extends StatelessWidget {
-  const _OnlineTile({required this.session});
+  const _OnlineTile({required this.session, required this.onKick});
 
   final OnlineSession session;
+  final VoidCallback onKick;
 
   @override
   Widget build(BuildContext context) {
@@ -155,33 +227,52 @@ class _OnlineTile extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Text(
-                      _shortUa(session.userAgent),
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
+                    Expanded(
+                      child: Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          Text(
+                            _shortUa(session.userAgent),
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          if (session.isCurrent)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0x1A1C8C6E),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: const Text(
+                                '当前',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF1C8C6E),
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-                    if (session.isCurrent) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0x1A1C8C6E),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: const Text(
-                          '当前',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF1C8C6E),
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
+                    IconButton(
+                      tooltip: session.isCurrent ? '退出当前登录' : '踢出该登录',
+                      onPressed: onKick,
+                      icon: Icon(
+                        session.isCurrent
+                            ? Icons.logout_rounded
+                            : Icons.power_settings_new_rounded,
+                        size: 20,
+                        color: theme.colorScheme.error,
                       ),
-                    ],
+                      visualDensity: VisualDensity.compact,
+                    ),
                   ],
                 ),
                 const SizedBox(height: 4),
