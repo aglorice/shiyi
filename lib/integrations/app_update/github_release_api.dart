@@ -137,28 +137,63 @@ class GitHubReleaseApi {
     Uri uri, {
     void Function(int received, int total)? onReceiveProgress,
   }) async {
-    try {
-      final response = await _dio.getUri<List<int>>(
-        uri,
-        options: Options(responseType: ResponseType.bytes),
-        onReceiveProgress: onReceiveProgress,
-      );
-      if (response.statusCode != 200 || response.data == null) {
-        return FailureResult(
-          NetworkFailure('安装包下载失败，状态码 ${response.statusCode ?? '-'}。'),
+    // 国内访问 github.com release 包经常不稳定，按顺序尝试镜像站。
+    // 任何一站返回 200 即用；都失败再回落到 github 原始 URL。
+    final candidates = _buildDownloadCandidates(uri);
+    DioException? lastError;
+    for (final candidate in candidates) {
+      try {
+        _logger.info('[UPDATE] 尝试下载 $candidate');
+        final response = await _dio.getUri<List<int>>(
+          candidate,
+          options: Options(
+            responseType: ResponseType.bytes,
+            // 镜像可能慢，单站 60s 超时；总尝试上限就靠候选数。
+            receiveTimeout: const Duration(seconds: 90),
+          ),
+          onReceiveProgress: onReceiveProgress,
         );
+        if (response.statusCode == 200 && response.data != null) {
+          return Success(Uint8List.fromList(response.data!));
+        }
+        _logger.warn(
+          '[UPDATE] 镜像 $candidate 返回 ${response.statusCode}，换下一个',
+        );
+      } on DioException catch (error) {
+        lastError = error;
+        _logger.warn('[UPDATE] 镜像 $candidate 失败：${error.message}');
+        continue;
       }
-      return Success(Uint8List.fromList(response.data!));
-    } on DioException catch (error, stackTrace) {
-      _logger.error('下载 GitHub 安装包失败', error: error, stackTrace: stackTrace);
-      return FailureResult(
-        NetworkFailure('安装包下载失败，请稍后重试。', cause: error, stackTrace: stackTrace),
-      );
-    } catch (error, stackTrace) {
-      _logger.error('处理 GitHub 安装包失败', error: error, stackTrace: stackTrace);
-      return FailureResult(
-        ParsingFailure('安装包处理失败。', cause: error, stackTrace: stackTrace),
-      );
     }
+
+    final lastUri = candidates.last;
+    _logger.error(
+      '所有 GitHub 镜像均下载失败 lastUri=$lastUri',
+      error: lastError,
+    );
+    return FailureResult(
+      NetworkFailure(
+        '安装包下载失败，请稍后重试。',
+        cause: lastError,
+        stackTrace: lastError?.stackTrace,
+      ),
+    );
+  }
+
+  /// 构建一个候选下载 URL 列表：先若干镜像，最后回落原始。
+  /// 镜像形式都是 `https://mirror.tld/<完整 github 原始 URL>`。
+  List<Uri> _buildDownloadCandidates(Uri original) {
+    final raw = original.toString();
+    if (!raw.startsWith('https://github.com/')) {
+      return [original];
+    }
+    return [
+      // 实测最稳的几个 release 加速站，按响应速度大致排序。
+      Uri.parse('https://gh-proxy.com/$raw'),
+      Uri.parse('https://ghproxy.net/$raw'),
+      Uri.parse('https://gh.idayer.com/$raw'),
+      Uri.parse('https://ghfast.top/$raw'),
+      original,
+    ];
   }
 }

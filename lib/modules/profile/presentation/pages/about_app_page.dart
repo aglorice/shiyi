@@ -54,12 +54,18 @@ class AboutAppPage extends ConsumerWidget {
             divider: false,
             children: [
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-                child: Wrap(
-                  spacing: 14,
-                  runSpacing: AppSpacing.md,
+                padding:
+                    const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                child: GridView.count(
+                  crossAxisCount: 4,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  childAspectRatio: 0.86,
+                  mainAxisSpacing: AppSpacing.md,
+                  crossAxisSpacing: 0,
                   children: [
-                    for (final feature in _features) _FeatureDot(feature: feature),
+                    for (final feature in _features)
+                      _FeatureDot(feature: feature),
                   ],
                 ),
               ),
@@ -191,33 +197,31 @@ class _FeatureDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return SizedBox(
-      width: 64,
-      child: Column(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(AppRadius.sm),
-            ),
-            child: Icon(
-              feature.icon,
-              size: 22,
-              color: theme.colorScheme.onSurface,
-            ),
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
           ),
-          const SizedBox(height: 6),
-          Text(
-            feature.label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w700,
-            ),
+          child: Icon(
+            feature.icon,
+            size: 22,
+            color: theme.colorScheme.onSurface,
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          feature.label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
     );
   }
 }
