@@ -19,6 +19,7 @@ import '../../modules/home/presentation/pages/home_page.dart';
 import '../../modules/notices/domain/entities/campus_notice.dart';
 import '../../modules/notices/presentation/pages/notice_detail_page.dart';
 import '../../modules/notices/presentation/pages/notices_page.dart';
+import '../../modules/personal_info/presentation/pages/personal_info_page.dart';
 import '../../modules/profile/presentation/pages/about_app_page.dart';
 import '../../modules/profile/presentation/pages/profile_page.dart';
 import '../../modules/profile/presentation/pages/settings_appearance_page.dart';
@@ -122,6 +123,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings/logs',
         builder: (context, state) => const SettingsLogsPage(),
+      ),
+      GoRoute(
+        path: '/personal-info',
+        builder: (context, state) => const PersonalInfoPage(),
       ),
       GoRoute(
         path: '/browser',

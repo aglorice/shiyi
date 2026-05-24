@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/di/app_providers.dart';
+import '../../../../app/theme/design_tokens.dart';
 import '../../../../integrations/school_portal/sso/slider_captcha.dart';
 import '../../../../integrations/school_portal/sso/sms_login_session.dart';
 import '../../domain/entities/auth_state.dart';
@@ -34,48 +35,57 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final authState = authAsync.value;
     final failure = authState?.failure;
     final isSubmitting = authAsync.isLoading;
+    final theme = Theme.of(context);
 
     return Scaffold(
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.xl,
+            ),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 400),
+              constraints: const BoxConstraints(maxWidth: 420),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 64),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(18),
                         child: Image.asset(
                           'assets/logo/pixel_cat_logo_1024.png',
-                          width: 52,
-                          height: 52,
+                          width: 56,
+                          height: 56,
                           fit: BoxFit.cover,
                         ),
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: AppSpacing.md),
                       Text(
                         '拾邑',
-                        style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                        style: theme.textTheme.displaySmall?.copyWith(
                           fontWeight: FontWeight.w900,
                           letterSpacing: 2,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: AppSpacing.lg),
                   Text(
-                    '使用五邑大学门户网站账号密码登录',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    '欢迎回来',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(height: 48),
+                  const SizedBox(height: 4),
+                  Text(
+                    '登录五邑大学统一身份认证',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
                   TextField(
                     controller: _usernameController,
                     decoration: const InputDecoration(
@@ -84,7 +94,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     ),
                     textInputAction: TextInputAction.next,
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: AppSpacing.md),
                   TextField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,
@@ -108,41 +118,81 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   ),
                   if (failure != null &&
                       authState?.status != AuthStatus.authenticated) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      failure.message,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    const SizedBox(height: AppSpacing.md),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.error_outline_rounded,
+                          size: 16,
+                          color: theme.colorScheme.error,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            failure.message,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.error,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
-                  const SizedBox(height: 28),
+                  const SizedBox(height: AppSpacing.xl),
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton(
                       onPressed: isSubmitting ? null : _submit,
-                      child: Padding(
+                      style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        child: Text(isSubmitting ? '登录中...' : '登录'),
+                        shape: RoundedRectangleBorder(
+                          borderRadius:
+                              BorderRadius.circular(AppRadius.md),
+                        ),
+                      ),
+                      child: isSubmitting
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text(
+                              '登录',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
+                              ),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  Center(
+                    child: TextButton.icon(
+                      onPressed: isSubmitting
+                          ? null
+                          : () => context.push('/login/sms'),
+                      icon: const Icon(Icons.smartphone_rounded, size: 18),
+                      label: const Text('使用手机号验证码登录'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: theme.colorScheme.onSurface,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  TextButton(
-                    onPressed: isSubmitting
-                        ? null
-                        : () => context.push('/login/sms'),
-                    child: const Text('使用手机号验证码登录'),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    '拾取校园点滴，邑你相伴同行',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.outline,
+                  const SizedBox(height: AppSpacing.xl),
+                  Center(
+                    child: Text(
+                      '拾取校园点滴，邑你相伴同行',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.outline,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: AppSpacing.lg),
                 ],
               ),
             ),
@@ -163,7 +213,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 
   /// 当服务端要求滑块时被调用：拉一张挑战 → 弹 sheet → 用户拖通过返回 true。
-  /// session 在过程中累计的新 cookies 会被回写。
   Future<bool> _solveCaptcha(SmsLoginSession session) async {
     if (!mounted) return false;
     final gateway = ref.read(schoolPortalGatewayProvider);

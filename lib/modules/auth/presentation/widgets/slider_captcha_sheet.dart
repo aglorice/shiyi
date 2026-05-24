@@ -19,9 +19,10 @@ typedef SliderVerifyCallback = Future<SliderVerifyResult> Function(
 /// 滑块验证 BottomSheet（控制器无关版本）。
 ///
 /// 行为对齐学校 web 端 longbow.slidercaptcha.js：
-/// - 大图固定渲染 280×155，按 `BoxFit.cover` 填满；
+/// - 大图固定渲染 280×155，按 `BoxFit.fill` 填满（同 web canvas
+///   `drawImage(big, 0, 0, 278, 155)`，保留比例不剪裁）；
 /// - 小拼图渲染宽度 = `smallNatural × (280 / bigNatural)`，
-///   完全复刻 web 端的缩放公式；
+///   `BoxFit.fill` 同步压成 canvasHeight，确保拼图与缺口位置对齐；
 /// - 拖动按钮位移驱动小拼图同步移动；按节流（≥20ms 且 ≥2px）采样轨迹。
 /// - 校验通过：sheet 自动收起；失败：调 [onRefresh] 换图重试。
 class SliderCaptchaSheet extends StatefulWidget {
@@ -198,7 +199,7 @@ class _SliderCaptchaSheetState extends State<SliderCaptchaSheet> {
                       _challenge.bigImageBytes,
                       width: canvasWidth,
                       height: canvasHeight,
-                      fit: BoxFit.cover,
+                      fit: BoxFit.fill,
                       gaplessPlayback: true,
                     ),
                     Positioned(

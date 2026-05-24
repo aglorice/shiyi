@@ -28,6 +28,17 @@ class ProfilePage extends ConsumerWidget {
       children: [
         _IdentityRow(session: session),
         PageSection(
+          title: '账号',
+          children: [
+            SettingActionTile(
+              icon: Icons.person_outline_rounded,
+              title: '个人中心',
+              subtitle: '当前在线、登录与应用访问记录',
+              onTap: () => context.push('/personal-info'),
+            ),
+          ],
+        ),
+        PageSection(
           title: '偏好',
           children: [
             SettingActionTile(

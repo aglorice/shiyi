@@ -17,6 +17,7 @@ import '../../modules/gym_booking/domain/entities/gym_search_filter.dart';
 import '../../modules/gym_booking/domain/entities/gym_venue_search_page.dart';
 import '../../modules/gym_booking/domain/entities/venue_detail.dart';
 import '../../modules/gym_booking/domain/entities/venue_review.dart';
+import '../../modules/personal_info/domain/entities/user_log_entry.dart';
 import '../../modules/schedule/domain/entities/schedule_snapshot.dart';
 import '../../modules/services/domain/entities/service_card_data.dart';
 import '../../modules/services/domain/entities/service_launch_data.dart';
@@ -40,6 +41,22 @@ abstract class SchoolPortalGateway {
   /// 调用学校 SSO 注销接口，让远端 CASTGC 等会话 cookie 失效。
   /// 调用方仍然需要自行清本地 session/credential。
   Future<Result<void>> logout(AppSession session);
+
+  // -------- 个人中心：访问/登录/密码 日志、当前在线 --------
+
+  /// 拉一页用户日志（认证 / 密码 / 应用访问）。
+  Future<Result<UserLogPage>> queryUserLogs(
+    AppSession session, {
+    required UserLogType type,
+    int pageIndex = 1,
+    int pageSize = 10,
+  });
+
+  /// 拉当前在线会话列表。
+  Future<Result<List<OnlineSession>>> queryOnlineSessions(AppSession session);
+
+  /// IP 归属地查询。返回 null 视为未知。
+  Future<String?> lookupIpLocation(String ip);
 
   /// 启动短信登录流程，拿到一个用于贯穿后续滑块/发短信/登录三步的 [SmsLoginSession]。
   Future<Result<SmsLoginSession>> startSmsLogin();
@@ -1860,6 +1877,33 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
   @override
   Future<Result<void>> logout(AppSession session) {
     return _portalApi.logout(session);
+  }
+
+  @override
+  Future<Result<UserLogPage>> queryUserLogs(
+    AppSession session, {
+    required UserLogType type,
+    int pageIndex = 1,
+    int pageSize = 10,
+  }) {
+    return _portalApi.queryUserLogs(
+      session,
+      type: type,
+      pageIndex: pageIndex,
+      pageSize: pageSize,
+    );
+  }
+
+  @override
+  Future<Result<List<OnlineSession>>> queryOnlineSessions(
+    AppSession session,
+  ) {
+    return _portalApi.queryOnlineSessions(session);
+  }
+
+  @override
+  Future<String?> lookupIpLocation(String ip) {
+    return _portalApi.lookupIpLocation(ip);
   }
 
   @override
@@ -4195,6 +4239,26 @@ class TestingSchoolPortalGateway implements SchoolPortalGateway {
   Future<Result<void>> logout(AppSession session) async {
     return const Success(null);
   }
+
+  @override
+  Future<Result<UserLogPage>> queryUserLogs(
+    AppSession session, {
+    required UserLogType type,
+    int pageIndex = 1,
+    int pageSize = 10,
+  }) async {
+    return const FailureResult(BusinessFailure('测试环境未接入访问记录。'));
+  }
+
+  @override
+  Future<Result<List<OnlineSession>>> queryOnlineSessions(
+    AppSession session,
+  ) async {
+    return const FailureResult(BusinessFailure('测试环境未接入在线会话。'));
+  }
+
+  @override
+  Future<String?> lookupIpLocation(String ip) async => null;
 
   @override
   Future<Result<SmsLoginSession>> startSmsLogin() async {
