@@ -162,6 +162,7 @@ class AppPreferences {
     this.scheduleWeekSetDate,
     this.selectedTermId,
     this.pixelPet,
+    this.showHomeHitokoto = true,
     this.gymPhoneNumber,
     this.gymPreferredSportId,
     this.gymPreferredSportLabel,
@@ -201,6 +202,9 @@ class AppPreferences {
 
   /// The pixel pet assigned to this user (random on first launch).
   final String? pixelPet;
+
+  /// 是否在首页 Hero 区域显示一言气泡。默认显示。
+  final bool showHomeHitokoto;
 
   /// The phone number saved for gym booking.
   final String? gymPhoneNumber;
@@ -254,6 +258,7 @@ class AppPreferences {
     String? selectedTermId,
     bool clearSelectedTermId = false,
     String? pixelPet,
+    bool? showHomeHitokoto,
     String? gymPhoneNumber,
     String? gymPreferredSportId,
     String? gymPreferredSportLabel,
@@ -289,6 +294,7 @@ class AppPreferences {
           ? null
           : (selectedTermId ?? this.selectedTermId),
       pixelPet: pixelPet ?? this.pixelPet,
+      showHomeHitokoto: showHomeHitokoto ?? this.showHomeHitokoto,
       gymPhoneNumber: clearGymPhoneNumber
           ? null
           : (gymPhoneNumber ?? this.gymPhoneNumber),
@@ -327,6 +333,7 @@ class AppPreferences {
   static const _scheduleWeekSetDateKey = 'app.schedule.weekSetDate';
   static const _selectedTermIdKey = 'app.schedule.selectedTermId';
   static const _pixelPetKey = 'app.ui.pixelPet';
+  static const _showHomeHitokotoKey = 'app.home.showHitokoto';
   static const _gymPhoneNumberKey = 'app.gym.phoneNumber';
   static const _gymPreferredSportIdKey = 'app.gym.preferredSportId';
   static const _gymPreferredSportLabelKey = 'app.gym.preferredSportLabel';
@@ -362,6 +369,7 @@ class AppPreferences {
       scheduleWeekSetDate: preferences.getString(_scheduleWeekSetDateKey),
       selectedTermId: preferences.getString(_selectedTermIdKey),
       pixelPet: preferences.getString(_pixelPetKey),
+      showHomeHitokoto: preferences.getBool(_showHomeHitokotoKey) ?? true,
       gymPhoneNumber: preferences.getString(_gymPhoneNumberKey),
       gymPreferredSportId: preferences.getString(_gymPreferredSportIdKey),
       gymPreferredSportLabel: preferences.getString(_gymPreferredSportLabelKey),
@@ -429,6 +437,7 @@ class AppPreferences {
     } else {
       await preferences.remove(_pixelPetKey);
     }
+    await preferences.setBool(_showHomeHitokotoKey, showHomeHitokoto);
     if (gymPhoneNumber != null) {
       await preferences.setString(_gymPhoneNumberKey, gymPhoneNumber!);
     } else {

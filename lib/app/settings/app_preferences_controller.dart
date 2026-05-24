@@ -71,6 +71,10 @@ class AppPreferencesController extends Notifier<AppPreferences> {
     await _update(state.copyWith(showWeekends: value));
   }
 
+  Future<void> setShowHomeHitokoto(bool value) async {
+    await _update(state.copyWith(showHomeHitokoto: value));
+  }
+
   Future<void> setScheduleBackgroundStyle(ScheduleBackgroundStyle value) async {
     await _update(state.copyWith(scheduleBackgroundStyle: value));
   }

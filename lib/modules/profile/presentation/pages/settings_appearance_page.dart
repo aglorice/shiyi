@@ -34,6 +34,18 @@ class SettingsAppearancePage extends ConsumerWidget {
             ],
           ),
           PageSection(
+            title: '首页',
+            children: [
+              SettingSwitchTile(
+                icon: Icons.format_quote_rounded,
+                title: '显示一言',
+                subtitle: '首页右上角的小气泡（每日一句）',
+                value: preferences.showHomeHitokoto,
+                onChanged: controller.setShowHomeHitokoto,
+              ),
+            ],
+          ),
+          PageSection(
             title: '阅读体验',
             children: [
               SettingSwitchTile(

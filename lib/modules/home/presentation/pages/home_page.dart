@@ -126,7 +126,7 @@ class HomePage extends ConsumerWidget {
           },
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 112),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 112),
             children: children,
           ),
         );
@@ -295,7 +295,7 @@ class _MobileOverviewGrid extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(child: _SchoolNewsOverviewCard(newsAsync: newsAsync)),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: _ElectricityPreviewCard(
                   electricityAsync: electricityAsync,
@@ -392,7 +392,7 @@ class _HomeHero extends StatelessWidget {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 16, 18),
+        padding: const EdgeInsets.fromLTRB(18, 18, 14, 16),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
@@ -459,12 +459,18 @@ class _HeroPetQuote extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final showHitokoto = ref.watch(
+      appPreferencesControllerProvider
+          .select((p) => p.showHomeHitokoto),
+    );
     final quote = quoteAsync.asData?.value;
-    final hasQuote = quote != null && quote.text.trim().isNotEmpty;
+    final hasQuote = showHitokoto &&
+        quote != null &&
+        quote.text.trim().isNotEmpty;
     final width = MediaQuery.sizeOf(context).width;
 
     return SizedBox(
-      width: width >= AppBreakpoints.desktop ? 220 : 180,
+      width: width >= AppBreakpoints.desktop ? 220 : 160,
       height: hasQuote ? 94 : 76,
       child: Stack(
         clipBehavior: Clip.none,
