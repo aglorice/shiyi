@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../shared/widgets/page_section.dart';
-import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../profile/presentation/widgets/settings_widgets.dart';
 
 /// 个人中心入口页：四个分组入口卡。
@@ -16,10 +15,6 @@ class PersonalInfoPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final session =
-        ref.watch(authControllerProvider).asData?.value.session;
-    final theme = Theme.of(context);
-
     return Scaffold(
       appBar: AppBar(title: const Text('个人中心')),
       body: ListView(
@@ -28,57 +23,6 @@ class PersonalInfoPage extends ConsumerWidget {
           bottom: AppSpacing.pageBottomGap,
         ),
         children: [
-          if (session != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.pageH,
-                AppSpacing.sm,
-                AppSpacing.pageH,
-                AppSpacing.lg,
-              ),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 28,
-                    backgroundColor: theme.colorScheme.primaryContainer,
-                    child: Text(
-                      (session.displayName.isEmpty
-                              ? '?'
-                              : session.displayName.substring(0, 1))
-                          .toUpperCase(),
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w900,
-                        color: theme.colorScheme.onPrimaryContainer,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          session.displayName,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          session.userId,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                            fontFeatures: const [
-                              FontFeature.tabularFigures()
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
           PageSection(
             title: '安全',
             children: [
