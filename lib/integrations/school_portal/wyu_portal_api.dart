@@ -588,6 +588,46 @@ class WyuPortalApi {
 
   // -----------------------------------------------------------------
 
+  /// 主动注销服务端登录态。GET /authserver/logout?service=`<index>`。
+  ///
+  /// 服务端会返回 302，Set-Cookie 把 CASTGC/CASPRIVACY/iPlanetDirectoryPro
+  /// 全部置过期，然后 Location 跳到指定 service。我们跟一次重定向即视为成功。
+  /// 任何中间错误都按"成功"处理 —— 客户端始终需要清本地，不能因为远端不通就卡住。
+  Future<Result<void>> logout(AppSession session) async {
+    final cookieStore = _CookieStore(session.cookies);
+    try {
+      _logger.info('[SSO] 主动注销 userId=${session.userId}');
+      const indexUrl = 'https://ehall.wyu.edu.cn/default/index.html';
+      final logoutUri = Uri.parse(
+        'https://authserver.wyu.edu.cn/authserver/logout',
+      ).replace(queryParameters: {'service': indexUrl});
+
+      final response = await _get(logoutUri, cookieStore);
+
+      // 期望 302 → ehall index；如果是其它状态也不阻塞客户端注销流程。
+      if (response.statusCode == 302) {
+        final location = response.location;
+        if (location != null && location.isNotEmpty) {
+          // 跟一次重定向，让 ehall 端的 Cookie 也跟着失效。
+          await _get(response.uri.resolve(location), cookieStore);
+        }
+      } else {
+        _logger.warn(
+          '[SSO] 注销返回 status=${response.statusCode}，已忽略并继续清本地 session',
+        );
+      }
+    } catch (error, stackTrace) {
+      _logger.warn(
+        '[SSO] 注销请求失败但仍然继续清本地：$error\n$stackTrace',
+      );
+    }
+    // 不管远端结果如何，移除运行时状态。
+    _runtimeStates.remove(session.userId);
+    return const Success(null);
+  }
+
+  // -----------------------------------------------------------------
+
   Future<Result<void>> validateSession(AppSession session) async {
     if (session.cookies.isEmpty) {
       return const FailureResult(SessionExpiredFailure('登录态缺失，无法继续访问学校门户。'));

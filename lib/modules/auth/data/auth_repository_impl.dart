@@ -71,6 +71,22 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> logout() async {
+    // 先尝试主动注销远端：拿当前 session → 调 gateway.logout。
+    // 不让远端失败影响本地清理：sessionStore/credentialVault 永远会被清。
+    try {
+      final session = await _sessionStore.read();
+      if (session != null) {
+        await _gateway.logout(session);
+      }
+    } catch (error, stackTrace) {
+      developer.log(
+        'Failed to call school portal logout endpoint, continuing local cleanup.',
+        name: 'AuthRepositoryImpl',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
     try {
       await _credentialVault.clear();
     } catch (error, stackTrace) {

@@ -37,6 +37,10 @@ abstract class SchoolPortalGateway {
   Future<Result<AppSession>> refreshSession(SchoolCredential credential);
   Future<Result<void>> validateSession(AppSession session);
 
+  /// 调用学校 SSO 注销接口，让远端 CASTGC 等会话 cookie 失效。
+  /// 调用方仍然需要自行清本地 session/credential。
+  Future<Result<void>> logout(AppSession session);
+
   /// 启动短信登录流程，拿到一个用于贯穿后续滑块/发短信/登录三步的 [SmsLoginSession]。
   Future<Result<SmsLoginSession>> startSmsLogin();
 
@@ -1851,6 +1855,11 @@ class WyuSchoolPortalGateway implements SchoolPortalGateway {
   @override
   Future<Result<void>> validateSession(AppSession session) {
     return _sessionValidator.validate(session);
+  }
+
+  @override
+  Future<Result<void>> logout(AppSession session) {
+    return _portalApi.logout(session);
   }
 
   @override
@@ -4179,6 +4188,11 @@ class TestingSchoolPortalGateway implements SchoolPortalGateway {
 
   @override
   Future<Result<void>> validateSession(AppSession session) async {
+    return const Success(null);
+  }
+
+  @override
+  Future<Result<void>> logout(AppSession session) async {
     return const Success(null);
   }
 
