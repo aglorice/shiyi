@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../shared/widgets/pixel_pet.dart';
 import '../di/app_providers.dart';
 import 'app_preferences.dart';
+import 'github_mirror.dart';
 import 'schedule_timing_preference.dart';
 
 final appPreferencesControllerProvider =
@@ -73,6 +74,10 @@ class AppPreferencesController extends Notifier<AppPreferences> {
 
   Future<void> setShowHomeHitokoto(bool value) async {
     await _update(state.copyWith(showHomeHitokoto: value));
+  }
+
+  Future<void> setGithubMirrorBundle(GithubMirrorBundle bundle) async {
+    await _update(state.copyWith(githubMirrorBundle: bundle));
   }
 
   Future<void> setScheduleBackgroundStyle(ScheduleBackgroundStyle value) async {

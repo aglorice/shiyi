@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'github_mirror.dart';
 import 'schedule_timing_preference.dart';
 
 enum AppThemePreset { ocean, sunrise, forest }
@@ -163,6 +164,7 @@ class AppPreferences {
     this.selectedTermId,
     this.pixelPet,
     this.showHomeHitokoto = true,
+    this.githubMirrorBundle,
     this.gymPhoneNumber,
     this.gymPreferredSportId,
     this.gymPreferredSportLabel,
@@ -205,6 +207,13 @@ class AppPreferences {
 
   /// 是否在首页 Hero 区域显示一言气泡。默认显示。
   final bool showHomeHitokoto;
+
+  /// 用户配置的 GitHub 镜像加速列表 + 当前选中。
+  /// null 表示走默认配置（在 [resolvedGithubMirrorBundle] 里实例化）。
+  final GithubMirrorBundle? githubMirrorBundle;
+
+  GithubMirrorBundle get resolvedGithubMirrorBundle =>
+      githubMirrorBundle ?? GithubMirrorBundle.initial();
 
   /// The phone number saved for gym booking.
   final String? gymPhoneNumber;
@@ -259,6 +268,7 @@ class AppPreferences {
     bool clearSelectedTermId = false,
     String? pixelPet,
     bool? showHomeHitokoto,
+    GithubMirrorBundle? githubMirrorBundle,
     String? gymPhoneNumber,
     String? gymPreferredSportId,
     String? gymPreferredSportLabel,
@@ -295,6 +305,7 @@ class AppPreferences {
           : (selectedTermId ?? this.selectedTermId),
       pixelPet: pixelPet ?? this.pixelPet,
       showHomeHitokoto: showHomeHitokoto ?? this.showHomeHitokoto,
+      githubMirrorBundle: githubMirrorBundle ?? this.githubMirrorBundle,
       gymPhoneNumber: clearGymPhoneNumber
           ? null
           : (gymPhoneNumber ?? this.gymPhoneNumber),
@@ -334,6 +345,7 @@ class AppPreferences {
   static const _selectedTermIdKey = 'app.schedule.selectedTermId';
   static const _pixelPetKey = 'app.ui.pixelPet';
   static const _showHomeHitokotoKey = 'app.home.showHitokoto';
+  static const _githubMirrorKey = 'app.update.githubMirror';
   static const _gymPhoneNumberKey = 'app.gym.phoneNumber';
   static const _gymPreferredSportIdKey = 'app.gym.preferredSportId';
   static const _gymPreferredSportLabelKey = 'app.gym.preferredSportLabel';
@@ -370,6 +382,9 @@ class AppPreferences {
       selectedTermId: preferences.getString(_selectedTermIdKey),
       pixelPet: preferences.getString(_pixelPetKey),
       showHomeHitokoto: preferences.getBool(_showHomeHitokotoKey) ?? true,
+      githubMirrorBundle: GithubMirrorBundle.fromJsonString(
+        preferences.getString(_githubMirrorKey),
+      ),
       gymPhoneNumber: preferences.getString(_gymPhoneNumberKey),
       gymPreferredSportId: preferences.getString(_gymPreferredSportIdKey),
       gymPreferredSportLabel: preferences.getString(_gymPreferredSportLabelKey),
@@ -438,6 +453,12 @@ class AppPreferences {
       await preferences.remove(_pixelPetKey);
     }
     await preferences.setBool(_showHomeHitokotoKey, showHomeHitokoto);
+    if (githubMirrorBundle != null) {
+      await preferences.setString(
+        _githubMirrorKey,
+        githubMirrorBundle!.toJsonString(),
+      );
+    }
     if (gymPhoneNumber != null) {
       await preferences.setString(_gymPhoneNumberKey, gymPhoneNumber!);
     } else {

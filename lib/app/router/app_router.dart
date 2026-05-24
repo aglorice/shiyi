@@ -28,6 +28,7 @@ import '../../modules/personal_info/presentation/pages/personal_info_page.dart';
 import '../../modules/profile/presentation/pages/about_app_page.dart';
 import '../../modules/profile/presentation/pages/profile_page.dart';
 import '../../modules/profile/presentation/pages/settings_appearance_page.dart';
+import '../../modules/profile/presentation/pages/settings_github_mirror_page.dart';
 import '../../modules/profile/presentation/pages/settings_logs_page.dart';
 import '../../modules/profile/presentation/pages/settings_schedule_export_page.dart';
 import '../../modules/profile/presentation/pages/settings_schedule_page.dart';
@@ -126,6 +127,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings/storage',
         builder: (context, state) => const SettingsStoragePage(),
+      ),
+      GoRoute(
+        path: '/settings/github-mirror',
+        builder: (context, state) => const SettingsGithubMirrorPage(),
       ),
       GoRoute(
         path: '/settings/schedule-export',

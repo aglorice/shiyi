@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
+import '../../app/settings/github_mirror.dart';
 import '../../core/error/failure.dart';
 import '../../core/logging/api_log_interceptor.dart';
 import '../../core/logging/app_logger.dart';
@@ -136,10 +137,11 @@ class GitHubReleaseApi {
   Future<Result<Uint8List>> downloadAsset(
     Uri uri, {
     void Function(int received, int total)? onReceiveProgress,
+    GithubMirror? preferredMirror,
   }) async {
     // 国内访问 github.com release 包经常不稳定，按顺序尝试镜像站。
     // 任何一站返回 200 即用；都失败再回落到 github 原始 URL。
-    final candidates = _buildDownloadCandidates(uri);
+    final candidates = _buildDownloadCandidates(uri, preferredMirror);
     DioException? lastError;
     for (final candidate in candidates) {
       try {
@@ -180,20 +182,52 @@ class GitHubReleaseApi {
     );
   }
 
-  /// 构建一个候选下载 URL 列表：先若干镜像，最后回落原始。
-  /// 镜像形式都是 `https://mirror.tld/<完整 github 原始 URL>`。
-  List<Uri> _buildDownloadCandidates(Uri original) {
+  /// 构建一个候选下载 URL 列表：preferredMirror（如果给了且不是 direct）
+  /// 优先；不行再回落到原始。
+  List<Uri> _buildDownloadCandidates(Uri original, GithubMirror? preferred) {
     final raw = original.toString();
     if (!raw.startsWith('https://github.com/')) {
       return [original];
     }
-    return [
-      // 实测最稳的几个 release 加速站，按响应速度大致排序。
-      Uri.parse('https://gh-proxy.com/$raw'),
-      Uri.parse('https://ghproxy.net/$raw'),
-      Uri.parse('https://gh.idayer.com/$raw'),
-      Uri.parse('https://ghfast.top/$raw'),
-      original,
-    ];
+    final list = <Uri>[];
+    if (preferred != null && preferred.id != GithubMirror.direct.id) {
+      list.add(preferred.wrap(original));
+    }
+    list.add(original);
+    return list;
+  }
+
+  /// 测试某个镜像是否可用：发 HEAD 到一个固定的 GitHub 文件。
+  /// 返回 ms 延迟；null 表示失败。调用方只用它做 UI 显示，
+  /// 不会作为下载策略的硬条件。
+  Future<int?> probeMirror(GithubMirror mirror) async {
+    // 用 GitHub 自家的 release latest 重定向接口当探针，体积小、永久存在。
+    // 直连项也可以测，给用户一个对比基线。
+    const probePath = 'https://github.com/octocat/Hello-World/archive/refs/heads/master.zip';
+    final probeUri = mirror.id == GithubMirror.direct.id
+        ? Uri.parse(probePath)
+        : mirror.wrap(Uri.parse(probePath));
+    final stopwatch = Stopwatch()..start();
+    try {
+      final response = await _dio.headUri(
+        probeUri,
+        options: Options(
+          followRedirects: false,
+          validateStatus: (s) => s != null,
+          sendTimeout: const Duration(seconds: 8),
+          receiveTimeout: const Duration(seconds: 8),
+        ),
+      );
+      stopwatch.stop();
+      // 200/302 都视为正常响应。
+      final status = response.statusCode ?? 0;
+      if (status >= 200 && status < 400) {
+        return stopwatch.elapsedMilliseconds;
+      }
+      return null;
+    } catch (_) {
+      stopwatch.stop();
+      return null;
+    }
   }
 }

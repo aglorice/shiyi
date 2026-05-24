@@ -82,6 +82,12 @@ class ProfilePage extends ConsumerWidget {
               subtitle: '清空本地缓存、重置外观',
               onTap: () => context.push('/settings/storage'),
             ),
+            SettingActionTile(
+              icon: Icons.cloud_sync_rounded,
+              title: 'GitHub 镜像',
+              subtitle: '版本更新走加速通道',
+              onTap: () => context.push('/settings/github-mirror'),
+            ),
           ],
         ),
         PageSection(

@@ -5,6 +5,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../../app/app_links.dart';
 import '../../../../app/di/app_providers.dart';
+import '../../../../app/settings/app_preferences_controller.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/platform/app_installer_service.dart';
 import '../../../../core/platform/file_save_service.dart';
@@ -158,10 +159,14 @@ class AppUpdateController {
     _ref.read(appUpdateActionStateProvider.notifier).state = currentState
         .copyWith(busy: true, progress: 0);
 
+    final preferences = _ref.read(appPreferencesControllerProvider);
+    final preferredMirror = preferences.resolvedGithubMirrorBundle.selected;
+
     final downloadResult = await _ref
         .read(gitHubReleaseApiProvider)
         .downloadAsset(
           Uri.parse(asset.downloadUrl),
+          preferredMirror: preferredMirror,
           onReceiveProgress: (received, total) {
             if (total <= 0) {
               _ref.read(appUpdateActionStateProvider.notifier).state = _ref
