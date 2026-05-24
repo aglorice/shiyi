@@ -31,22 +31,22 @@ class ScheduleTimingPreference {
   final TimingBlock evening;
 
   static const defaults = ScheduleTimingPreference(
-    enabled: false,
+    enabled: true,
     lessonMinutes: 45,
     shortBreakMinutes: 5,
-    longBreakMinutes: 15,
+    longBreakMinutes: 20,
     morning: TimingBlock(
-      start: '08:00',
-      sessionCount: 5,
+      start: '08:15',
+      sessionCount: 4,
       longBreakAt: {1}, // 第 2 节后是大课间
     ),
     afternoon: TimingBlock(
-      start: '14:00',
-      sessionCount: 5,
+      start: '14:30',
+      sessionCount: 4,
       longBreakAt: {1},
     ),
     evening: TimingBlock(
-      start: '19:00',
+      start: '19:30',
       sessionCount: 3,
       longBreakAt: {1},
     ),
@@ -117,10 +117,10 @@ class ScheduleTimingPreference {
 
   factory ScheduleTimingPreference.fromJson(Map<String, dynamic> json) {
     return ScheduleTimingPreference(
-      enabled: json['enabled'] as bool? ?? false,
+      enabled: json['enabled'] as bool? ?? true,
       lessonMinutes: (json['lessonMinutes'] as num?)?.toInt() ?? 45,
       shortBreakMinutes: (json['shortBreakMinutes'] as num?)?.toInt() ?? 5,
-      longBreakMinutes: (json['longBreakMinutes'] as num?)?.toInt() ?? 15,
+      longBreakMinutes: (json['longBreakMinutes'] as num?)?.toInt() ?? 20,
       morning: json['morning'] is Map
           ? TimingBlock.fromJson(json['morning'] as Map<String, dynamic>)
           : defaults.morning,

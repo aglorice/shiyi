@@ -149,7 +149,7 @@ class AppPreferences {
     this.themePreset = AppThemePreset.ocean,
     this.darkMode = false,
     this.themeMode = AppThemeMode.light,
-    this.fontScale = 1.0,
+    this.fontScale = 0.9,
     this.fontPreset = AppFontPreset.system,
     this.compactMode = false,
     this.highContrast = false,
@@ -348,7 +348,7 @@ class AppPreferences {
       darkMode: preferences.getBool(_darkModeKey) ?? false,
       themeMode: _themeModeFromName(preferences.getString(_themeModeKey)),
       fontScale: _normalizeFontScale(
-        preferences.getDouble(_fontScaleKey) ?? 1.0,
+        preferences.getDouble(_fontScaleKey) ?? 0.9,
       ),
       fontPreset: _fontPresetFromName(preferences.getString(_fontPresetKey)),
       compactMode: preferences.getBool(_compactModeKey) ?? false,
