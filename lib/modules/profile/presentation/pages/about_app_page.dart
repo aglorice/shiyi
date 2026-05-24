@@ -145,7 +145,7 @@ class _AppIntro extends StatelessWidget {
       child: Row(
         children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(AppRadius.md),
+            borderRadius: BorderRadius.circular(64 * 0.225),
             child: Image.asset(
               'assets/logo/pixel_cat_logo_1024.png',
               width: 64,

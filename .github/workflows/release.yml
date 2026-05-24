@@ -183,23 +183,17 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: 拾邑 ${{ needs.prepare.outputs.tag }}
           body: |
-            ## What's Changed
-
-            ${{ steps.changelog.outputs.commits }}
-
-            ---
-
             ## 更新内容
 
             ${{ steps.changelog.outputs.commits }}
 
-            ## Downloads
+            ## 下载
 
-            | File | SHA1 | Description |
+            | 文件 | SHA1 | 说明 |
             | --- | --- | --- |
-            | `app-release.apk` | `${{ steps.apk_sha1.outputs.sha1 }}` | Universal Android APK |
+            | `app-release.apk` | `${{ steps.apk_sha1.outputs.sha1 }}` | Android APK（通用） |
 
-            See **Assets** below for the full package and checksum file.
+            校验文件见下方 **Assets**。
           files: |
             artifacts/app-release.apk
             artifacts/app-release.apk.sha1

@@ -53,7 +53,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   Row(
                     children: [
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: BorderRadius.circular(56 * 0.225),
                         child: Image.asset(
                           'assets/logo/pixel_cat_logo_1024.png',
                           width: 56,

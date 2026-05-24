@@ -60,6 +60,18 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.4
+
+# 启动器图标配置：iOS 自动生成圆角 squircle，Android 用 adaptive icon。
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/logo/pixel_cat_logo_1024.png"
+  remove_alpha_ios: true
+  background_color_ios: "#FAF8F6"
+  adaptive_icon_background: "#FAF8F6"
+  adaptive_icon_foreground: "assets/logo/pixel_cat_logo_1024.png"
+  min_sdk_android: 21
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

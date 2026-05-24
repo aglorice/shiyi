@@ -285,7 +285,7 @@ class _DesktopRailHeader extends StatelessWidget {
         child: Row(
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(40 * 0.225),
               child: Image.asset(
                 'assets/logo/pixel_cat_logo_1024.png',
                 width: 40,
