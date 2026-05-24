@@ -230,6 +230,24 @@ Required secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
 4. `git push origin feature/<topic>`
 5. Open a Pull Request
 
+## Disclaimer
+
+- This project is for learning and personal use only. It is **not** for
+  commercial purposes.
+- All data comes from the public Wuyi University (wyu.edu.cn) unified
+  identity / jxgl / ehall / authserver endpoints. The user must log in with
+  their own credentials to access their own data.
+- No credentials or personal information are uploaded to any third-party
+  server. Sessions and credentials are stored locally on the device only.
+- Any consequence of using this project (including but not limited to account
+  risk, data inaccuracy, or violations of school rules) is the user's own
+  responsibility. The author bears no liability.
+- School-side endpoints can change at any time; the author makes no
+  guarantee about availability or correctness.
+- If the university or any related party considers this project infringing
+  or inappropriate, please open a GitHub Issue and the relevant features
+  will be removed promptly.
+
 ## License
 
 MIT License — see [LICENSE](LICENSE).
