@@ -160,6 +160,8 @@ dart run flutter_launcher_icons
 lib/
 ├── main.dart                  # 应用入口
 ├── app/                       # 应用配置
+│   ├── app.dart               # MaterialApp / 主题 / 路由 装配
+│   ├── app_links.dart         # 全局常量（GitHub 仓库、默认 service…）
 │   ├── bootstrap/             # 启动 / 初始化
 │   ├── di/                    # 依赖注入
 │   ├── layout/                # 断点 / 自适应布局
@@ -170,9 +172,11 @@ lib/
 ├── core/                      # 核心工具
 │   ├── error/                 # 错误处理与展示
 │   ├── logging/               # 全局日志 + 接口日志环形缓冲
+│   ├── models/                # 跨模块通用值对象（DataOrigin…）
+│   ├── network/               # 共享 Dio 配置 / 拦截器
 │   ├── platform/              # 平台桥接（系统下载、安装器…）
 │   ├── result/                # Result / Failure 模式
-│   └── storage/               # JSON 缓存
+│   └── storage/               # JSON 缓存 + SharedPreferences 辅助
 ├── integrations/              # 外部集成
 │   ├── app_update/            # GitHub Release 检查 + 镜像下载
 │   ├── calendar/              # ICS 导出
@@ -227,7 +231,6 @@ lib/
 - 本项目不存储、不上传任何账号密码或个人信息到第三方服务器，所有凭证和会话仅保存在本机；
 - 任何使用本项目所产生的后果（包括但不限于账号风险、数据偏差、违反学校规定）由使用者自行承担，与本项目作者无关；
 - 学校接口随时可能调整，本项目不对功能可用性做任何承诺；
-- 如学校或相关方认为本项目侵权或不当，请通过 GitHub Issue 联系，我们会及时下架相关功能。
 
 ## 开源许可
 

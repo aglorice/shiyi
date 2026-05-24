@@ -27,7 +27,7 @@
 
 ---
 
-**拾邑** (Shí Yì) is a campus assistant app for students at Wuyi University. It
+**拾邑** (Shí Yì) is a campus assistant app for students at Wuyi University(五邑大学). It
 glues together academic data, campus services and daily utilities into a
 single Flutter app.
 
@@ -169,6 +169,8 @@ Android adaptive icon set and the iOS AppIcon set.
 lib/
 ├── main.dart                  # entry point
 ├── app/                       # app-level configuration
+│   ├── app.dart               # MaterialApp + theming + router wiring
+│   ├── app_links.dart         # constants (GitHub repo, default service URL…)
 │   ├── bootstrap/             # initialization
 │   ├── di/                    # dependency injection
 │   ├── layout/                # breakpoints
@@ -179,9 +181,11 @@ lib/
 ├── core/                      # cross-cutting helpers
 │   ├── error/                 # failure / display
 │   ├── logging/               # global logger + Dio interceptor + ring buffer
-│   ├── platform/              # downloads, installer
+│   ├── models/                # cross-module value objects (DataOrigin…)
+│   ├── network/               # shared Dio configuration / interceptors
+│   ├── platform/              # downloads, installer, OS bridges
 │   ├── result/                # Result / Failure pattern
-│   └── storage/               # JSON cache
+│   └── storage/               # JSON cache + SharedPreferences helpers
 ├── integrations/              # external integrations
 │   ├── app_update/            # GitHub release + mirror downloader
 │   ├── calendar/              # ICS exporter
@@ -244,9 +248,6 @@ Required secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
   responsibility. The author bears no liability.
 - School-side endpoints can change at any time; the author makes no
   guarantee about availability or correctness.
-- If the university or any related party considers this project infringing
-  or inappropriate, please open a GitHub Issue and the relevant features
-  will be removed promptly.
 
 ## License
 
