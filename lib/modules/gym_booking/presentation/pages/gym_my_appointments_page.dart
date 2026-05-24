@@ -147,10 +147,10 @@ class _GymMyAppointmentsPageState extends ConsumerState<GymMyAppointmentsPage> {
         child: RefreshIndicator(
           onRefresh: () => _fetch(reset: true),
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 120),
             children: [
               SurfaceCard(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(14),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -276,7 +276,7 @@ class _GymMyAppointmentsPageState extends ConsumerState<GymMyAppointmentsPage> {
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: SurfaceCard(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(14),
                       child: GymAppointmentTile(
                         record: record,
                         onTap: () => context.push(

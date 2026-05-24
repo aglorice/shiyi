@@ -55,7 +55,7 @@ class GymBookingPage extends ConsumerWidget {
                 await controller.refresh();
               },
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 120),
                 children: [
                   _OverviewHero(
                     overview: overview,
@@ -112,7 +112,7 @@ class _OverviewHero extends ConsumerWidget {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -277,7 +277,7 @@ class _ActionCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(30),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(14),
             child: Row(
               children: [
                 Container(
@@ -666,7 +666,7 @@ class _RecommendationSectionState
     final snapshot = _snapshot;
 
     return SurfaceCard(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

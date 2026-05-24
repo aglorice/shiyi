@@ -27,7 +27,7 @@ class GymBookingProfilePage extends ConsumerWidget {
       appBar: AppBar(title: const Text('预约偏好')),
       body: ConstrainedBody(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 120),
           children: [
             _ProfileInfoCard(preferences: preferences),
             const SizedBox(height: 14),
@@ -55,7 +55,7 @@ class _ProfileInfoCard extends ConsumerWidget {
     final phone = preferences.gymPhoneNumber;
 
     return SurfaceCard(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -125,7 +125,7 @@ class _PreferenceCard extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return SurfaceCard(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -305,7 +305,7 @@ class _ProfileAppointmentsCard extends StatelessWidget {
     final theme = Theme.of(context);
 
     return SurfaceCard(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

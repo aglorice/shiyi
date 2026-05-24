@@ -321,7 +321,7 @@ class _GymVenueDetailPageState extends ConsumerState<GymVenueDetailPage> {
       appBar: AppBar(title: Text(widget.venueName)),
       body: ConstrainedBody(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 120),
           children: [
             _BookingPanel(
               selectedDate: _selectedDate,
@@ -381,7 +381,7 @@ class _BookingPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SurfaceCard(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -464,7 +464,7 @@ class _VenueDetailPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return SurfaceCard(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -553,7 +553,7 @@ class _ReviewPanel extends StatelessWidget {
     final reviews = reviewPage?.reviews ?? const <VenueReview>[];
 
     return SurfaceCard(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

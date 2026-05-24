@@ -141,10 +141,10 @@ class _GymVenueSearchPageState extends ConsumerState<GymVenueSearchPage> {
         child: RefreshIndicator(
           onRefresh: _refresh,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 120),
             children: [
               SurfaceCard(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(14),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -319,8 +319,8 @@ class _DetailedFilterCard extends StatelessWidget {
       child: Theme(
         data: theme.copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
-          tilePadding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          tilePadding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
           initiallyExpanded: selectedVenueType != null || selectedSport != null,
           leading: const Icon(Icons.tune_rounded),
           title: Text(
@@ -480,7 +480,7 @@ class _VenueSearchCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SurfaceCard(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
