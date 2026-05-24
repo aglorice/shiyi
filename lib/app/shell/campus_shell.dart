@@ -81,6 +81,19 @@ class _CampusShellState extends ConsumerState<CampusShell> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(authControllerProvider, (prev, next) {
+      // 当 auth 从已认证翻到未认证 / 需要重新认证时，强制跳到登录页。
+      // 这是 router refreshListenable 之外的兜底，确保页面真的离开。
+      final wasAuth = prev?.value?.isAuthenticated ?? false;
+      final isAuth = next.value?.isAuthenticated ?? false;
+      if (wasAuth && !isAuth && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            GoRouter.of(context).go('/login');
+          }
+        });
+      }
+    });
     ref.listen(scheduleControllerProvider, (_, next) {
       if (next.hasError && next.error is SessionExpiredFailure) {
         _onSessionExpired();

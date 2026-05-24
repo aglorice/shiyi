@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../di/app_providers.dart';
 import '../../modules/auth/presentation/controllers/auth_controller.dart';
 import '../../modules/auth/presentation/pages/login_page.dart';
 import '../../modules/auth/presentation/pages/sms_login_page.dart';
@@ -47,8 +48,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   // 都会重建整个 GoRouter，从而把 LoginPage 卸载掉，导致登录中弹出的
   // 滑块 sheet 因 BuildContext 失效而无法显示。
   final refreshListenable = ValueNotifier<int>(0);
-  ref.listen(authControllerProvider, (_, __) {
+  final logger = ref.watch(appLoggerProvider);
+  ref.listen(authControllerProvider, (prev, next) {
     refreshListenable.value++;
+    final prevAuth = prev?.value?.isAuthenticated ?? false;
+    final nextAuth = next.value?.isAuthenticated ?? false;
+    final status = next.value?.status.name ?? 'loading';
+    logger.info('[ROUTER] auth changed status=$status '
+        'isAuth=$prevAuth → $nextAuth, refresh router');
   });
   ref.onDispose(refreshListenable.dispose);
 
