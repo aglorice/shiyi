@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../app/settings/app_preferences_controller.dart';
+import '../../../../app/settings/github_mirror.dart';
 import '../../../../core/error/error_display.dart';
 import '../../../../core/platform/app_installer_service.dart';
 import '../../../../core/result/result.dart';
@@ -34,6 +37,10 @@ class UpdateSheet extends ConsumerWidget {
       ),
     );
     final actionState = ref.watch(appUpdateActionStateProvider);
+    final mirror = ref.watch(
+      appPreferencesControllerProvider
+          .select((p) => p.resolvedGithubMirrorBundle.selected),
+    );
 
     return Container(
       decoration: BoxDecoration(
@@ -49,6 +56,7 @@ class UpdateSheet extends ConsumerWidget {
       child: statusAsync.when(
         loading: () => _UpdateSheetScaffold(
           title: '版本更新',
+          mirror: mirror,
           child: SizedBox(
             height: 180,
             child: Center(
@@ -72,6 +80,7 @@ class UpdateSheet extends ConsumerWidget {
         ),
         error: (error, _) => _UpdateSheetScaffold(
           title: '版本更新',
+          mirror: mirror,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -112,7 +121,7 @@ class UpdateSheet extends ConsumerWidget {
           ),
         ),
         data: (status) =>
-            _buildLoadedContent(context, ref, status, actionState),
+            _buildLoadedContent(context, ref, status, actionState, mirror),
       ),
     );
   }
@@ -122,11 +131,13 @@ class UpdateSheet extends ConsumerWidget {
     WidgetRef ref,
     AppUpdateStatus status,
     AppUpdateActionState actionState,
+    GithubMirror mirror,
   ) {
     final theme = Theme.of(context);
     if (status.hasError && !status.hasRelease) {
       return _UpdateSheetScaffold(
         title: '版本更新',
+        mirror: mirror,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -184,6 +195,7 @@ class UpdateSheet extends ConsumerWidget {
 
     return _UpdateSheetScaffold(
       title: '版本更新',
+      mirror: mirror,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -362,10 +374,15 @@ class UpdateSheet extends ConsumerWidget {
 }
 
 class _UpdateSheetScaffold extends StatelessWidget {
-  const _UpdateSheetScaffold({required this.title, required this.child});
+  const _UpdateSheetScaffold({
+    required this.title,
+    required this.child,
+    required this.mirror,
+  });
 
   final String title;
   final Widget child;
+  final GithubMirror mirror;
 
   @override
   Widget build(BuildContext context) {
@@ -386,15 +403,79 @@ class _UpdateSheetScaffold extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        Text(
-          title,
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w900,
-          ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            _MirrorChip(mirror: mirror),
+          ],
         ),
         const SizedBox(height: 18),
         child,
       ],
+    );
+  }
+}
+
+class _MirrorChip extends StatelessWidget {
+  const _MirrorChip({required this.mirror});
+
+  final GithubMirror mirror;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDirect = mirror.id == GithubMirror.direct.id;
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: () {
+        Navigator.of(context).maybePop();
+        // 等 sheet 关掉再 push，避免导航栈奇怪。
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          // ignore: use_build_context_synchronously
+          GoRouter.of(context).push('/settings/github-mirror');
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: isDirect
+              ? theme.colorScheme.surfaceContainerHighest
+              : theme.colorScheme.primaryContainer,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isDirect
+                  ? Icons.cloud_outlined
+                  : Icons.cloud_sync_rounded,
+              size: 14,
+              color: isDirect
+                  ? theme.colorScheme.onSurfaceVariant
+                  : theme.colorScheme.onPrimaryContainer,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              isDirect ? 'GitHub 直连' : mirror.label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: isDirect
+                    ? theme.colorScheme.onSurfaceVariant
+                    : theme.colorScheme.onPrimaryContainer,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
