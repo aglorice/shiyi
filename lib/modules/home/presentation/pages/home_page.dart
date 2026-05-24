@@ -179,7 +179,7 @@ class _SchoolNewsOverviewCard extends StatelessWidget {
     final latest = state.items.isEmpty ? null : state.items.first;
     final dateLabel = latest == null
         ? '官方动态'
-        : DateFormat('MM月dd日', 'zh_CN').format(latest.publishedAt);
+        : DateFormat('M月d日', 'zh_CN').format(latest.publishedAt);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -202,7 +202,10 @@ class _SchoolNewsOverviewCard extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          '官方动态 · $dateLabel',
+          latest == null ? '官方动态' : '官方动态 · $dateLabel',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          softWrap: false,
           style: theme.textTheme.labelSmall?.copyWith(
             color: const Color(0xFF0A5D63),
             fontWeight: FontWeight.w700,
