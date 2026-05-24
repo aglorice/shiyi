@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -7,12 +8,9 @@ import '../../../../shared/widgets/app_snackbar.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../domain/entities/user_log_entry.dart';
 import '../controllers/user_logs_controller.dart';
-import '../widgets/ip_chip.dart';
-import '../widgets/user_agent_chip.dart';
+import '../widgets/log_meta_row.dart';
 
 /// 当前在线管理页。
-///
-/// 列表项右侧带"踢出"按钮：踢自己 → 自动登出回登录页；踢其它则刷新列表。
 class OnlineSessionsPage extends ConsumerWidget {
   const OnlineSessionsPage({super.key});
 
@@ -161,88 +159,87 @@ class _OnlineTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            margin: const EdgeInsets.only(top: 9),
-            decoration: BoxDecoration(
+    return InkWell(
+      onLongPress: () async {
+        await Clipboard.setData(ClipboardData(text: session.ip));
+        if (!context.mounted) return;
+        AppSnackBar.show(
+          context,
+          message: '已复制 ${session.ip}',
+          tone: AppSnackBarTone.success,
+          icon: Icons.copy_rounded,
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              _osIcon(session.userAgent),
+              size: 22,
               color: session.isCurrent
                   ? const Color(0xFF1C8C6E)
-                  : theme.colorScheme.outlineVariant,
-              shape: BoxShape.circle,
+                  : theme.colorScheme.onSurface,
             ),
-          ),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 4,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          UserAgentChip(userAgent: session.userAgent),
-                          if (session.isCurrent)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0x1A1C8C6E),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: const Text(
-                                '当前',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Color(0xFF1C8C6E),
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _formatUa(session.userAgent),
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      if (session.isCurrent)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: Text(
+                            '当前',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: const Color(0xFF1C8C6E),
+                              fontWeight: FontWeight.w800,
                             ),
-                        ],
+                          ),
+                        ),
+                      InkWell(
+                        onTap: onKick,
+                        borderRadius: BorderRadius.circular(999),
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Icon(
+                            session.isCurrent
+                                ? Icons.logout_rounded
+                                : Icons.power_settings_new_rounded,
+                            size: 18,
+                            color: theme.colorScheme.error,
+                          ),
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      tooltip: session.isCurrent ? '退出当前登录' : '踢出该登录',
-                      onPressed: onKick,
-                      visualDensity: VisualDensity.compact,
-                      icon: Icon(
-                        session.isCurrent
-                            ? Icons.logout_rounded
-                            : Icons.power_settings_new_rounded,
-                        size: 20,
-                        color: theme.colorScheme.error,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${session.loginTimeLabel} · ${session.loginTypeDesc}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                    ],
                   ),
-                ),
-                const SizedBox(height: 8),
-                IpChip(
-                  ip: session.ip,
-                  fallbackLocation: session.location,
-                ),
-              ],
+                  const SizedBox(height: 4),
+                  LogMetaRow(
+                    icon: Icons.access_time_rounded,
+                    text: _shortTime(session.loginTimeLabel),
+                    secondary: session.loginTypeDesc,
+                  ),
+                  LogMetaRow(
+                    icon: Icons.public_rounded,
+                    text: session.ip,
+                    secondary: session.location,
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -284,4 +281,58 @@ class _ErrorView extends StatelessWidget {
       ),
     );
   }
+}
+
+String _shortTime(String full) {
+  if (full.length < 16) return full;
+  return full.substring(5, 16);
+}
+
+IconData _osIcon(String ua) {
+  final s = ua.toLowerCase();
+  if (s.startsWith('mac')) return Icons.laptop_mac_rounded;
+  if (s.startsWith('windows')) return Icons.desktop_windows_rounded;
+  if (s.startsWith('android')) return Icons.phone_android_rounded;
+  if (s.startsWith('iphone') || s.startsWith('ios') || s.startsWith('ipad')) {
+    return Icons.phone_iphone_rounded;
+  }
+  if (s.startsWith('linux')) return Icons.terminal_rounded;
+  return Icons.devices_other_rounded;
+}
+
+String _formatUa(String ua) {
+  if (ua.trim().isEmpty) return '未知设备';
+  final segs = ua.split(' ');
+  final osRaw = segs.first.toLowerCase();
+  String os;
+  if (osRaw.startsWith('mac')) {
+    os = 'macOS';
+  } else if (osRaw.startsWith('windows')) {
+    final parts = osRaw.replaceAll('_', ' ').split(' ');
+    os = parts.length >= 2
+        ? 'Windows ${parts.sublist(1).join(' ')}'
+        : 'Windows';
+  } else if (osRaw.startsWith('android')) {
+    final cap = osRaw.replaceAll('_', ' ');
+    os = '${cap[0].toUpperCase()}${cap.substring(1)}';
+  } else if (osRaw.startsWith('iphone') ||
+      osRaw.startsWith('ios') ||
+      osRaw.startsWith('ipad')) {
+    os = 'iOS';
+  } else if (osRaw.startsWith('linux')) {
+    os = 'Linux';
+  } else {
+    os = osRaw;
+  }
+  if (segs.length < 2) return os;
+  final br = segs.sublist(1).join(' ');
+  final m = RegExp(r'([a-zA-Z]+)\d*/(\d+)').firstMatch(br);
+  if (m != null) {
+    final name = m.group(1) ?? '';
+    final ver = m.group(2) ?? '';
+    if (name.isNotEmpty) {
+      return '$os · ${name[0].toUpperCase()}${name.substring(1)} $ver';
+    }
+  }
+  return '$os · $br';
 }

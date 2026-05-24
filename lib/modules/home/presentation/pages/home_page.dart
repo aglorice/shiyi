@@ -126,7 +126,7 @@ class HomePage extends ConsumerWidget {
           },
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 112),
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 112),
             children: children,
           ),
         );
@@ -150,7 +150,7 @@ class _SchoolNewsOverviewCard extends StatelessWidget {
       child: InkWell(
         onTap: () => context.push('/school-news'),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -295,7 +295,7 @@ class _MobileOverviewGrid extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(child: _SchoolNewsOverviewCard(newsAsync: newsAsync)),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(
                 child: _ElectricityPreviewCard(
                   electricityAsync: electricityAsync,
@@ -392,7 +392,7 @@ class _HomeHero extends StatelessWidget {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 18, 14, 16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 12, 14),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
@@ -842,7 +842,7 @@ class _TodayCourseCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SurfaceCard(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       child: switch (scheduleAsync) {
         AsyncData(:final value) => _buildContent(context, value),
         AsyncError() => _buildPlaceholder(
@@ -1124,7 +1124,7 @@ class _ElectricityPreviewCard extends StatelessWidget {
         onTap: () => context.push('/electricity'),
         borderRadius: BorderRadius.circular(30),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           child: switch (electricityAsync) {
             AsyncData(:final value) => Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1311,7 +1311,7 @@ class _GymAppointmentsPreviewCard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     return SurfaceCard(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
