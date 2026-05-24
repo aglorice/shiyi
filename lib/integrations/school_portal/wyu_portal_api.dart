@@ -623,7 +623,10 @@ class WyuPortalApi {
       );
     }
     // 不管远端结果如何，移除运行时状态。
-    _runtimeStates.remove(session.userId);
+    final removed = _runtimeStates.remove(session.userId);
+    if (removed != null) {
+      _personalInfoReady.remove(removed.cookieStore);
+    }
     return const Success(null);
   }
 
@@ -633,6 +636,31 @@ class WyuPortalApi {
       'https://authserver.wyu.edu.cn/personalInfo/UserLogs/user/queryUserLogs';
   static const _userOnlineUrl =
       'https://authserver.wyu.edu.cn/personalInfo/UserOnline/user/queryUserOnline';
+  static const _personalInfoIndexUrl =
+      'https://authserver.wyu.edu.cn/personalInfo/';
+
+  /// 在调用 personalInfo 下任意 ajax 接口之前，先 GET 一次首页跟随重定向。
+  /// 这一步会让 authserver 给 personalInfo 子站盖上独立的 session cookie，
+  /// 否则后续 ajax 全部 302 回 CAS。
+  Future<void> _ensurePersonalInfoSession(_CookieStore cookieStore) async {
+    if (_personalInfoReady.contains(cookieStore)) return;
+    await _followGetRedirects(
+      Uri.parse(_personalInfoIndexUrl),
+      cookieStore,
+    );
+    _personalInfoReady.add(cookieStore);
+  }
+
+  /// 已经 warmup 过 personalInfo 的 cookieStore 缓存。
+  /// runtimeStates 复用 cookieStore 实例时，这里也命中。
+  final Set<_CookieStore> _personalInfoReady = <_CookieStore>{};
+
+  Map<String, String> get _personalInfoHeaders => const {
+        'Accept': 'application/json, text/plain, */*',
+        'Origin': 'https://authserver.wyu.edu.cn',
+        'Referer': _personalInfoIndexUrl,
+        'X-Requested-With': 'XMLHttpRequest',
+      };
 
   /// operType: 0=认证 1=未知 2=密码 3=应用。
   Future<Result<UserLogPage>> queryUserLogs(
@@ -667,10 +695,12 @@ class WyuPortalApi {
     }
 
     try {
+      await _ensurePersonalInfoSession(state.cookieStore);
       final response = await _postJson(
         Uri.parse(_userLogsUrl),
         body,
         state.cookieStore,
+        extraHeaders: _personalInfoHeaders,
       );
       if (response.statusCode != 200) {
         return FailureResult(
@@ -708,6 +738,7 @@ class WyuPortalApi {
   ) async {
     final state = _stateForSession(session);
     try {
+      await _ensurePersonalInfoSession(state.cookieStore);
       final t = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       final response = await _get(
         Uri.parse(_userOnlineUrl),
@@ -755,16 +786,21 @@ class WyuPortalApi {
   }) async {
     final state = _stateForSession(session);
     try {
+      await _ensurePersonalInfoSession(state.cookieStore);
       final response = await _postJson(
         Uri.parse(
           'https://authserver.wyu.edu.cn/personalInfo/UserOnline/user/removeUserOnline',
         ).replace(queryParameters: {'id': id}),
         {'n': _random.nextDouble().toString()},
         state.cookieStore,
+        extraHeaders: _personalInfoHeaders,
       );
       // 踢自己：302 重定向到登录页。
       if (response.statusCode == 302) {
-        _runtimeStates.remove(session.userId);
+        final removed = _runtimeStates.remove(session.userId);
+        if (removed != null) {
+          _personalInfoReady.remove(removed.cookieStore);
+        }
         return KickOnlineResult.selfKicked;
       }
       if (response.statusCode != 200) {
@@ -2351,9 +2387,13 @@ class WyuPortalApi {
   Future<_TransportResponse> _postJson(
     Uri uri,
     Object data,
-    _CookieStore cookieStore,
-  ) async {
+    _CookieStore cookieStore, {
+    Map<String, String>? extraHeaders,
+  }) async {
     final headers = _headersFor(uri, cookieStore);
+    if (extraHeaders != null) {
+      headers.addAll(extraHeaders);
+    }
     _logRequest(method: 'POST', uri: uri, headers: headers, body: data);
     final response = await _dio.postUri<String>(
       uri,
