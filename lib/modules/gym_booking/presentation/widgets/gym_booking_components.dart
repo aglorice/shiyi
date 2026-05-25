@@ -238,18 +238,13 @@ class GymSlotTile extends StatelessWidget {
     final hasPassed = _slotHasPassed(slot);
     final isBookable = enabled && slot.isAvailable && !hasPassed;
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         children: [
           Container(
             width: 4,
-            height: 42,
+            height: 36,
             decoration: BoxDecoration(
               color: isBookable ? accentColor : colorScheme.outlineVariant,
               borderRadius: BorderRadius.circular(999),

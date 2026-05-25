@@ -438,16 +438,21 @@ class _BookingPanel extends StatelessWidget {
             )
           else
             Column(
-              children: slots.map((slot) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: GymSlotTile(
-                    slot: slot,
+              children: [
+                for (var i = 0; i < slots.length; i++) ...[
+                  if (i > 0)
+                    Divider(
+                      height: 1,
+                      thickness: 0.6,
+                      color: Theme.of(context).dividerColor.withValues(alpha: 0.4),
+                    ),
+                  GymSlotTile(
+                    slot: slots[i],
                     capacity: venue!.capacity,
-                    onBook: () => onBook(venue!, slot),
+                    onBook: () => onBook(venue!, slots[i]),
                   ),
-                );
-              }).toList(),
+                ],
+              ],
             ),
         ],
       ),
@@ -619,12 +624,15 @@ class _ReviewPanel extends StatelessWidget {
               ),
             )
           else ...[
-            ...reviews.map((review) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _ReviewTile(review: review),
-              );
-            }),
+            for (var i = 0; i < reviews.length; i++) ...[
+              if (i > 0)
+                Divider(
+                  height: 1,
+                  thickness: 0.6,
+                  color: Theme.of(context).dividerColor.withValues(alpha: 0.4),
+                ),
+              _ReviewTile(review: reviews[i]),
+            ],
             if (error != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4, bottom: 8),
@@ -636,11 +644,14 @@ class _ReviewPanel extends StatelessWidget {
                 ),
               ),
             if (reviewPage?.hasMore == true)
-              Align(
-                alignment: Alignment.center,
-                child: FilledButton.tonal(
-                  onPressed: loadingMore ? null : onLoadMore,
-                  child: Text(loadingMore ? '加载中...' : '加载更多评论'),
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Align(
+                  alignment: Alignment.center,
+                  child: FilledButton.tonal(
+                    onPressed: loadingMore ? null : onLoadMore,
+                    child: Text(loadingMore ? '加载中...' : '加载更多评论'),
+                  ),
                 ),
               ),
           ],
@@ -658,13 +669,8 @@ class _ReviewTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -693,7 +699,7 @@ class _ReviewTile extends StatelessWidget {
             ],
           ),
           if (review.createdAt != null) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               DateFormat('yyyy-MM-dd').format(review.createdAt!),
               style: theme.textTheme.labelSmall?.copyWith(
@@ -702,7 +708,7 @@ class _ReviewTile extends StatelessWidget {
             ),
           ],
           if (review.content != null && review.content!.trim().isNotEmpty) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Text(review.content!, style: theme.textTheme.bodyMedium),
           ],
         ],
