@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/error/failure.dart';
 import '../../../../shared/widgets/app_snackbar.dart';
 import '../../../../shared/widgets/module_error_state.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
@@ -20,6 +21,23 @@ class OnlineSessionsPage extends ConsumerWidget {
     final state = ref.watch(onlineSessionsControllerProvider);
     final notifier = ref.read(onlineSessionsControllerProvider.notifier);
     final theme = Theme.of(context);
+
+    // 兜底：列表本身被 SessionExpiredFailure 打中（比如踢自己后服务端返回 200，
+    // 但下一次刷新立刻 302）。直接走和 selfKicked 一样的清场逻辑。
+    ref.listen(onlineSessionsControllerProvider, (prev, next) async {
+      final wasExpired = prev?.failure is SessionExpiredFailure;
+      final isExpired = next.failure is SessionExpiredFailure;
+      if (!wasExpired && isExpired && context.mounted) {
+        await ref.read(authControllerProvider.notifier).logout();
+        if (!context.mounted) return;
+        context.go('/login');
+        AppSnackBar.show(
+          context,
+          message: '登录已过期，请重新登录',
+          tone: AppSnackBarTone.info,
+        );
+      }
+    });
 
     Widget body;
     if (state.loading && state.items.isEmpty) {

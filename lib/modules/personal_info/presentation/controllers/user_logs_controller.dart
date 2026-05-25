@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/di/app_providers.dart';
+import '../../../../core/error/failure.dart';
 import '../../../../core/result/result.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../domain/entities/user_log_entry.dart';
@@ -156,21 +157,29 @@ class OnlineSessionsState {
     this.items = const [],
     this.loading = true,
     this.error,
+    this.failure,
   });
 
   final List<OnlineSession> items;
   final bool loading;
   final String? error;
 
+  /// 保留原始 Failure，便于上层区分 [SessionExpiredFailure] 与一般业务错误。
+  final Failure? failure;
+
   OnlineSessionsState copyWith({
     List<OnlineSession>? items,
     bool? loading,
     Object? error = _sentinel,
+    Object? failure = _sentinel,
   }) {
     return OnlineSessionsState(
       items: items ?? this.items,
       loading: loading ?? this.loading,
       error: identical(error, _sentinel) ? this.error : error as String?,
+      failure: identical(failure, _sentinel)
+          ? this.failure
+          : failure as Failure?,
     );
   }
 
@@ -189,7 +198,7 @@ class OnlineSessionsController extends Notifier<OnlineSessionsState> {
   }
 
   Future<void> refresh() async {
-    state = state.copyWith(loading: true, error: null);
+    state = state.copyWith(loading: true, error: null, failure: null);
     final session = await _readSession();
     if (session == null) {
       state = const OnlineSessionsState(loading: false, error: '未登录');
@@ -201,7 +210,11 @@ class OnlineSessionsController extends Notifier<OnlineSessionsState> {
       case Success(:final data):
         state = OnlineSessionsState(items: data, loading: false);
       case FailureResult(:final failure):
-        state = OnlineSessionsState(loading: false, error: failure.message);
+        state = OnlineSessionsState(
+          loading: false,
+          error: failure.message,
+          failure: failure,
+        );
     }
   }
 
