@@ -145,11 +145,19 @@ extension WyuPortalPersonalInfo on WyuPortalApi {
   }
 
   /// 踢出某个在线会话。
-  /// 返回值见 [KickOnlineResult]。如果踢的是当前 session，服务端会同步
-  /// 让 cookies 过期并返回 302；调用方应当视为登出当前账号。
+  /// 返回值见 [KickOnlineResult]。
+  ///
+  /// 学校 authserver 的同一个接口对"踢自己"的反馈不是稳定的：
+  /// - 大多数时候会让当前 cookies 过期并 302 跳到登录页；
+  /// - 偶尔（实测高峰期）会照样返回 200 + `code:"0"` 同时静默失效 cookies。
+  ///
+  /// 因此 [isCurrent] 必须由 UI 显式传入：当踢的是 isCurrent=true 的会话
+  /// 时，无论 200 还是 302 都按 [KickOnlineResult.selfKicked] 处理，
+  /// 这样调用方可以稳定地走"清本地 + 回登录页"逻辑。
   Future<KickOnlineResult> kickOnlineSession(
     AppSession session, {
     required String id,
+    bool isCurrent = false,
   }) async {
     final state = _stateForSession(session);
     try {
@@ -162,14 +170,20 @@ extension WyuPortalPersonalInfo on WyuPortalApi {
         state.cookieStore,
         extraHeaders: _personalInfoHeaders,
       );
-      // 踢自己：302 重定向到登录页。
-      if (response.statusCode == 302) {
+
+      // 踢自己：302 是最确定的信号；isCurrent=true 时 200 也按 selfKick。
+      final selfKicked =
+          response.statusCode == 302 || (isCurrent && response.statusCode == 200);
+      if (selfKicked) {
+        // 即便 200，本地也要把这条 session 关联的 cookieStore 一并清掉，
+        // 否则下一次请求还是会带着已经被服务端作废的 cookies 出去。
         final removed = _runtimeStates.remove(session.userId);
         if (removed != null) {
           _personalInfoReady.remove(removed.cookieStore);
         }
         return KickOnlineResult.selfKicked;
       }
+
       if (response.statusCode != 200) {
         return KickOnlineResult.error;
       }

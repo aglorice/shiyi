@@ -28,8 +28,13 @@ mixin _PersonalInfoGateway on _GatewayBase implements SchoolPortalGateway {
   Future<KickOnlineResult> kickOnlineSession(
     AppSession session, {
     required String id,
+    bool isCurrent = false,
   }) {
-    return _portalApi.kickOnlineSession(session, id: id);
+    return _portalApi.kickOnlineSession(
+      session,
+      id: id,
+      isCurrent: isCurrent,
+    );
   }
 
   @override

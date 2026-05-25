@@ -86,9 +86,12 @@ abstract class SchoolPortalGateway {
   Future<Result<List<OnlineSession>>> queryOnlineSessions(AppSession session);
 
   /// 踢出某个在线会话。可能踢的是当前 session（参见 [KickOnlineResult.selfKicked]）。
+  /// [isCurrent] 由 UI 提示是否在踢"自己"，用来在服务端返回 200 而非 302
+  /// 的情况下稳定识别 selfKick。
   Future<KickOnlineResult> kickOnlineSession(
     AppSession session, {
     required String id,
+    bool isCurrent = false,
   });
 
   /// IP 归属地查询。返回 null 视为未知。
@@ -598,6 +601,7 @@ class TestingSchoolPortalGateway implements SchoolPortalGateway {
   Future<KickOnlineResult> kickOnlineSession(
     AppSession session, {
     required String id,
+    bool isCurrent = false,
   }) async {
     return KickOnlineResult.error;
   }

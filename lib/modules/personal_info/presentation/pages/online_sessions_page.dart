@@ -122,7 +122,7 @@ class OnlineSessionsPage extends ConsumerWidget {
 
     final result = await ref
         .read(onlineSessionsControllerProvider.notifier)
-        .kickOnlineSession(session.id);
+        .kickOnlineSession(session.id, isCurrent: session.isCurrent);
 
     if (!context.mounted) return;
     switch (result) {

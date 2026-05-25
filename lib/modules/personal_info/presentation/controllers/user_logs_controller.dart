@@ -206,12 +206,17 @@ class OnlineSessionsController extends Notifier<OnlineSessionsState> {
   }
 
   /// 踢出指定 [id] 的在线会话。
-  Future<KickOnlineResult> kickOnlineSession(String id) async {
+  /// [isCurrent] 由调用方告知是否在踢"自己"，用来稳定识别 selfKick——服务端
+  /// 大部分时候 302 但少数高峰期会照样 200，仅靠状态码判断不够。
+  Future<KickOnlineResult> kickOnlineSession(
+    String id, {
+    bool isCurrent = false,
+  }) async {
     final session = await _readSession();
     if (session == null) return KickOnlineResult.error;
     final result = await ref
         .read(schoolPortalGatewayProvider)
-        .kickOnlineSession(session, id: id);
+        .kickOnlineSession(session, id: id, isCurrent: isCurrent);
     if (result == KickOnlineResult.success) {
       await refresh();
     }
