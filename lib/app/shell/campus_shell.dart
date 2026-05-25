@@ -173,35 +173,18 @@ class _CampusShellState extends ConsumerState<CampusShell> {
     }
 
     return Scaffold(
-      // 让内容画到底部 nav 底下，浮岛 nav 则覆盖在最上面，呈现 iOS 那种"内容
-      // 在 nav 之下若隐若现"的层级。Scaffold 自己内置的 bottomNavigationBar
-      // 会把 body 顶上去，那是 Material 风的"贴底栏"，与浮岛风格冲突，所以这里
-      // 不用它，直接用 Stack。
-      body: SafeArea(
-        bottom: false,
-        child: Stack(
-          children: [
-            Positioned.fill(child: widget.navigationShell),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: MediaQuery.viewPaddingOf(context).bottom + 12,
-              child: Center(
-                child: _FloatingNavBar(
-                  selectedIndex: widget.navigationShell.currentIndex,
-                  destinations: _destinations,
-                  onSelected: (index) {
-                    widget.navigationShell.goBranch(
-                      index,
-                      initialLocation:
-                          index == widget.navigationShell.currentIndex,
-                    );
-                  },
-                ),
-              ),
-            ),
-          ],
-        ),
+      // 内容自然铺到 nav 之上，nav 直接作为 bottomNavigationBar 占据底部，
+      // 不再用 Stack 浮岛——那种磨砂玻璃浮岛与整体的暖白扁平风不太合拍。
+      body: SafeArea(bottom: false, child: widget.navigationShell),
+      bottomNavigationBar: _CampusBottomBar(
+        selectedIndex: widget.navigationShell.currentIndex,
+        destinations: _destinations,
+        onSelected: (index) {
+          widget.navigationShell.goBranch(
+            index,
+            initialLocation: index == widget.navigationShell.currentIndex,
+          );
+        },
       ),
     );
   }
@@ -219,10 +202,11 @@ class _CampusDestination {
   final IconData selectedIcon;
 }
 
-/// 浮岛式底部导航：圆角胶囊条，icon-only 未选中态，选中态显示一个软填充
-/// pill + 文字标签，靠拢苹果 iOS Music / Maps 那种风格。
-class _FloatingNavBar extends StatelessWidget {
-  const _FloatingNavBar({
+/// 底部导航：与 scaffold 同色的暖白底，顶上一条 0.5px hairline 分隔线，
+/// 每个 tab 始终显示 icon + label。选中态：图标涂上主色，标签字加粗变深，
+/// 图标下方一颗 4px 圆点指示器。整体扁平、克制，与全应用的暖白纸感对齐。
+class _CampusBottomBar extends StatelessWidget {
+  const _CampusBottomBar({
     required this.selectedIndex,
     required this.destinations,
     required this.onSelected,
@@ -235,58 +219,39 @@ class _FloatingNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isLight = theme.brightness == Brightness.light;
-
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 360),
-      child: Padding(
-        // 留点左右边距，让浮岛真的"漂"在内容上而不是顶到屏幕边缘。
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(28),
-          // BackdropFilter 模拟 iOS 的玻璃磨砂；底色偏白半透。
-          // 在 SDK 实在不支持时，下面的 Container 也会用近不透明的白底兜底。
-          child: Container(
-            decoration: BoxDecoration(
-              color: isLight
-                  ? Colors.white.withValues(alpha: 0.92)
-                  : const Color(0xFF1A1A1A).withValues(alpha: 0.92),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-                width: 0.5,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                for (var i = 0; i < destinations.length; i++)
-                  Expanded(
-                    child: _FloatingNavItem(
-                      destination: destinations[i],
-                      selected: selectedIndex == i,
-                      onTap: () => onSelected(i),
-                    ),
-                  ),
-              ],
-            ),
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.scaffoldBackgroundColor,
+        border: Border(
+          top: BorderSide(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+            width: 0.5,
           ),
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(8, 6, 8, 6 + bottomInset),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            for (var i = 0; i < destinations.length; i++)
+              Expanded(
+                child: _CampusBottomItem(
+                  destination: destinations[i],
+                  selected: selectedIndex == i,
+                  onTap: () => onSelected(i),
+                ),
+              ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _FloatingNavItem extends StatelessWidget {
-  const _FloatingNavItem({
+class _CampusBottomItem extends StatelessWidget {
+  const _CampusBottomItem({
     required this.destination,
     required this.selected,
     required this.onTap,
@@ -300,49 +265,54 @@ class _FloatingNavItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final selectedBg = colorScheme.primaryContainer.withValues(alpha: 0.6);
-    final activeColor = colorScheme.onPrimaryContainer;
+    final activeColor = colorScheme.primary;
     final inactiveColor = colorScheme.onSurfaceVariant;
+    final color = selected ? activeColor : inactiveColor;
 
     return Material(
       color: Colors.transparent,
-      child: InkWell(
+      child: InkResponse(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: selected ? selectedBg : Colors.transparent,
-            borderRadius: BorderRadius.circular(22),
-          ),
-          child: Row(
+        radius: 36,
+        highlightShape: BoxShape.rectangle,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                selected ? destination.selectedIcon : destination.icon,
-                size: 22,
-                color: selected ? activeColor : inactiveColor,
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                transitionBuilder: (child, anim) => ScaleTransition(
+                  scale: Tween<double>(begin: 0.85, end: 1).animate(anim),
+                  child: FadeTransition(opacity: anim, child: child),
+                ),
+                child: Icon(
+                  selected ? destination.selectedIcon : destination.icon,
+                  key: ValueKey(selected),
+                  size: 22,
+                  color: color,
+                ),
               ),
-              // 选中态展开文字；未选中态完全收起，让 icon 居中。
-              AnimatedSize(
-                duration: const Duration(milliseconds: 220),
+              const SizedBox(height: 4),
+              Text(
+                destination.label,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: color,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  letterSpacing: 0.1,
+                ),
+              ),
+              const SizedBox(height: 4),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
                 curve: Curves.easeOutCubic,
-                child: selected
-                    ? Padding(
-                        padding: const EdgeInsets.only(left: 6),
-                        child: Text(
-                          destination.label,
-                          maxLines: 1,
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: activeColor,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      )
-                    : const SizedBox.shrink(),
+                height: 3,
+                width: selected ? 14 : 0,
+                decoration: BoxDecoration(
+                  color: activeColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ],
           ),
