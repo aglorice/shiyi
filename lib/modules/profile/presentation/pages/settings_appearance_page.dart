@@ -66,7 +66,6 @@ class SettingsAppearancePage extends ConsumerWidget {
           ),
           PageSection(
             title: '主题色',
-            divider: false,
             children: [
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
@@ -86,7 +85,6 @@ class SettingsAppearancePage extends ConsumerWidget {
           ),
           PageSection(
             title: '字体',
-            divider: false,
             children: [
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
@@ -107,21 +105,32 @@ class SettingsAppearancePage extends ConsumerWidget {
                   },
                 ),
               ),
-            ],
-          ),
-          PageSection(
-            title: '字号  ${preferences.fontScaleLabel}',
-            divider: false,
-            children: [
               SettingBlock(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Slider(
-                  value: preferences.fontScale,
-                  min: 0.9,
-                  max: 1.2,
-                  divisions: 6,
-                  label: preferences.fontScaleLabel,
-                  onChanged: controller.setFontScale,
+                padding: const EdgeInsets.fromLTRB(0, 4, 0, 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        '字号  ${preferences.fontScaleLabel}',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ),
+                    Slider(
+                      value: preferences.fontScale,
+                      min: 0.9,
+                      max: 1.2,
+                      divisions: 6,
+                      label: preferences.fontScaleLabel,
+                      onChanged: controller.setFontScale,
+                    ),
+                  ],
                 ),
               ),
             ],
