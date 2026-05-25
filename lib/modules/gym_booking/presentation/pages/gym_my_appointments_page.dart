@@ -272,21 +272,33 @@ class _GymMyAppointmentsPageState extends ConsumerState<GymMyAppointmentsPage> {
                   ),
                 )
               else ...[
-                ...?_page?.records.map((record) {
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: SurfaceCard(
-                      padding: const EdgeInsets.all(14),
-                      child: GymAppointmentTile(
-                        record: record,
-                        onTap: () => context.push(
-                          '/gym-booking/appointment/${record.id}',
-                          extra: record,
-                        ),
-                      ),
+                if (_page!.records.isNotEmpty)
+                  SurfaceCard(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 4,
+                      horizontal: 14,
                     ),
-                  );
-                }),
+                    child: Column(
+                      children: [
+                        for (var i = 0; i < _page!.records.length; i++) ...[
+                          if (i > 0)
+                            Divider(
+                              height: 0.6,
+                              thickness: 0.6,
+                              color: theme.colorScheme.outlineVariant
+                                  .withValues(alpha: 0.55),
+                            ),
+                          GymAppointmentTile(
+                            record: _page!.records[i],
+                            onTap: () => context.push(
+                              '/gym-booking/appointment/${_page!.records[i].id}',
+                              extra: _page!.records[i],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                 if (_error != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
