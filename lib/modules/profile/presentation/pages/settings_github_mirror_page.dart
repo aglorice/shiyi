@@ -24,6 +24,19 @@ class _SettingsGithubMirrorPageState
   bool _testing = false;
 
   @override
+  void initState() {
+    super.initState();
+    // 进页后台默默跑一次测速，不阻塞 UI；用户不用专门点右上角才能看到延迟。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final bundle = ref
+          .read(appPreferencesControllerProvider)
+          .resolvedGithubMirrorBundle;
+      _testAll(bundle.mirrors);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final preferences = ref.watch(appPreferencesControllerProvider);
     final bundle = preferences.resolvedGithubMirrorBundle;
