@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/error/error_display.dart';
 import '../../core/error/failure.dart';
+import 'module_error_state.dart';
 import 'session_expired_dialog.dart';
 
 class AsyncValueView<T> extends StatelessWidget {
@@ -51,40 +52,11 @@ class _GenericErrorView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final info = formatError(error);
-    final theme = Theme.of(context);
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              info.icon,
-              size: 48,
-              color: theme.colorScheme.error,
-            ),
-            const SizedBox(height: 16),
-            Text(info.title, style: theme.textTheme.titleLarge),
-            const SizedBox(height: 8),
-            Text(info.message, textAlign: TextAlign.center),
-            if (info.suggestion != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                info.suggestion!,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-            if (onRetry != null) ...[
-              const SizedBox(height: 16),
-              FilledButton.tonal(onPressed: onRetry, child: const Text('重试')),
-            ],
-          ],
-        ),
-      ),
+    return ModuleErrorState(
+      message: info.message,
+      icon: info.icon,
+      failure: error is Failure ? error as Failure : null,
+      onRetry: onRetry == null ? null : () async => onRetry!(),
     );
   }
 }

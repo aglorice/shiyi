@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../shared/widgets/module_error_state.dart';
 import '../../domain/entities/user_log_entry.dart';
 import '../controllers/user_logs_controller.dart';
 
@@ -61,7 +62,7 @@ class _LogListViewState extends State<LogListView> {
       return const Center(child: CircularProgressIndicator());
     }
     if (state.error != null && state.items.isEmpty) {
-      return _ErrorView(
+      return ModuleErrorState(
         message: state.error!,
         onRetry: widget.onRefresh,
       );
@@ -139,44 +140,6 @@ class _LogListViewState extends State<LogListView> {
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.message, required this.onRetry});
-
-  final String message;
-  final Future<void> Function() onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.error_outline_rounded,
-              color: theme.colorScheme.error,
-              size: 36,
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium,
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            FilledButton.tonal(
-              onPressed: onRetry,
-              child: const Text('重试'),
-            ),
-          ],
-        ),
       ),
     );
   }
