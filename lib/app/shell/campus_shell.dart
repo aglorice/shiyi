@@ -173,23 +173,35 @@ class _CampusShellState extends ConsumerState<CampusShell> {
     }
 
     return Scaffold(
-      body: SafeArea(bottom: false, child: widget.navigationShell),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: widget.navigationShell.currentIndex,
-        onDestinationSelected: (index) {
-          widget.navigationShell.goBranch(
-            index,
-            initialLocation: index == widget.navigationShell.currentIndex,
-          );
-        },
-        destinations: [
-          for (final d in _destinations)
-            NavigationDestination(
-              icon: Icon(d.icon),
-              selectedIcon: Icon(d.selectedIcon),
-              label: d.label,
+      // 让内容画到底部 nav 底下，浮岛 nav 则覆盖在最上面，呈现 iOS 那种"内容
+      // 在 nav 之下若隐若现"的层级。Scaffold 自己内置的 bottomNavigationBar
+      // 会把 body 顶上去，那是 Material 风的"贴底栏"，与浮岛风格冲突，所以这里
+      // 不用它，直接用 Stack。
+      body: SafeArea(
+        bottom: false,
+        child: Stack(
+          children: [
+            Positioned.fill(child: widget.navigationShell),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: MediaQuery.viewPaddingOf(context).bottom + 12,
+              child: Center(
+                child: _FloatingNavBar(
+                  selectedIndex: widget.navigationShell.currentIndex,
+                  destinations: _destinations,
+                  onSelected: (index) {
+                    widget.navigationShell.goBranch(
+                      index,
+                      initialLocation:
+                          index == widget.navigationShell.currentIndex,
+                    );
+                  },
+                ),
+              ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -205,6 +217,139 @@ class _CampusDestination {
   final String label;
   final IconData icon;
   final IconData selectedIcon;
+}
+
+/// 浮岛式底部导航：圆角胶囊条，icon-only 未选中态，选中态显示一个软填充
+/// pill + 文字标签，靠拢苹果 iOS Music / Maps 那种风格。
+class _FloatingNavBar extends StatelessWidget {
+  const _FloatingNavBar({
+    required this.selectedIndex,
+    required this.destinations,
+    required this.onSelected,
+  });
+
+  final int selectedIndex;
+  final List<_CampusDestination> destinations;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isLight = theme.brightness == Brightness.light;
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 360),
+      child: Padding(
+        // 留点左右边距，让浮岛真的"漂"在内容上而不是顶到屏幕边缘。
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          // BackdropFilter 模拟 iOS 的玻璃磨砂；底色偏白半透。
+          // 在 SDK 实在不支持时，下面的 Container 也会用近不透明的白底兜底。
+          child: Container(
+            decoration: BoxDecoration(
+              color: isLight
+                  ? Colors.white.withValues(alpha: 0.92)
+                  : const Color(0xFF1A1A1A).withValues(alpha: 0.92),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+                width: 0.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                for (var i = 0; i < destinations.length; i++)
+                  Expanded(
+                    child: _FloatingNavItem(
+                      destination: destinations[i],
+                      selected: selectedIndex == i,
+                      onTap: () => onSelected(i),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FloatingNavItem extends StatelessWidget {
+  const _FloatingNavItem({
+    required this.destination,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _CampusDestination destination;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final selectedBg = colorScheme.primaryContainer.withValues(alpha: 0.6);
+    final activeColor = colorScheme.onPrimaryContainer;
+    final inactiveColor = colorScheme.onSurfaceVariant;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected ? selectedBg : Colors.transparent,
+            borderRadius: BorderRadius.circular(22),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                selected ? destination.selectedIcon : destination.icon,
+                size: 22,
+                color: selected ? activeColor : inactiveColor,
+              ),
+              // 选中态展开文字；未选中态完全收起，让 icon 居中。
+              AnimatedSize(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                child: selected
+                    ? Padding(
+                        padding: const EdgeInsets.only(left: 6),
+                        child: Text(
+                          destination.label,
+                          maxLines: 1,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: activeColor,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _DesktopSidebar extends StatelessWidget {
