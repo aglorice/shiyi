@@ -250,7 +250,7 @@ class _CampusBottomBar extends StatelessWidget {
   }
 }
 
-class _CampusBottomItem extends StatelessWidget {
+class _CampusBottomItem extends StatefulWidget {
   const _CampusBottomItem({
     required this.destination,
     required this.selected,
@@ -262,59 +262,85 @@ class _CampusBottomItem extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_CampusBottomItem> createState() => _CampusBottomItemState();
+}
+
+class _CampusBottomItemState extends State<_CampusBottomItem> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed == value) return;
+    setState(() => _pressed = value);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final activeColor = colorScheme.primary;
     final inactiveColor = colorScheme.onSurfaceVariant;
-    final color = selected ? activeColor : inactiveColor;
+    final color = widget.selected ? activeColor : inactiveColor;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkResponse(
-        onTap: onTap,
-        radius: 36,
-        highlightShape: BoxShape.rectangle,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                transitionBuilder: (child, anim) => ScaleTransition(
-                  scale: Tween<double>(begin: 0.85, end: 1).animate(anim),
-                  child: FadeTransition(opacity: anim, child: child),
+    // 不用 InkWell/InkResponse —— 那种方块 splash 在贴底扁平条上太抢戏。
+    // 改用 GestureDetector + 轻微的整体缩放，按下时 95% 缩放 + 轻微变淡，
+    // 与 iOS 上的 tab bar 按下手感更接近。
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.onTap,
+      onTapDown: (_) => _setPressed(true),
+      onTapCancel: () => _setPressed(false),
+      onTapUp: (_) => _setPressed(false),
+      child: AnimatedScale(
+        scale: _pressed ? 0.92 : 1,
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOut,
+        child: AnimatedOpacity(
+          opacity: _pressed ? 0.7 : 1,
+          duration: const Duration(milliseconds: 140),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  transitionBuilder: (child, anim) => ScaleTransition(
+                    scale: Tween<double>(begin: 0.85, end: 1).animate(anim),
+                    child: FadeTransition(opacity: anim, child: child),
+                  ),
+                  child: Icon(
+                    widget.selected
+                        ? widget.destination.selectedIcon
+                        : widget.destination.icon,
+                    key: ValueKey(widget.selected),
+                    size: 22,
+                    color: color,
+                  ),
                 ),
-                child: Icon(
-                  selected ? destination.selectedIcon : destination.icon,
-                  key: ValueKey(selected),
-                  size: 22,
-                  color: color,
+                const SizedBox(height: 4),
+                Text(
+                  widget.destination.label,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: color,
+                    fontWeight:
+                        widget.selected ? FontWeight.w800 : FontWeight.w600,
+                    letterSpacing: 0.1,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                destination.label,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: color,
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                  letterSpacing: 0.1,
+                const SizedBox(height: 4),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  height: 3,
+                  width: widget.selected ? 14 : 0,
+                  decoration: BoxDecoration(
+                    color: activeColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOutCubic,
-                height: 3,
-                width: selected ? 14 : 0,
-                decoration: BoxDecoration(
-                  color: activeColor,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
