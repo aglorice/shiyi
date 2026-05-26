@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 小组件元信息：默认 4×2 单元格，30 分钟刷新一次。
+     真正的数据更新由 App 内 home_widget 主动推送，updatePeriodMillis 只是兜底。 -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="220dp"
+    android:minHeight="100dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/next_class_widget"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:previewLayout="@layout/next_class_widget"
+    android:description="@string/widget_next_class_description" />

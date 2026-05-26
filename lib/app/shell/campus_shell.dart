@@ -84,15 +84,22 @@ class _CampusShellState extends ConsumerState<CampusShell> {
 
   void _maybeRescheduleClassReminders(ScheduleSnapshot? snapshot) {
     final prefs = ref.read(appPreferencesControllerProvider);
-    final service = ref.read(classReminderServiceProvider);
+    final reminder = ref.read(classReminderServiceProvider);
+    final widget = ref.read(homeWidgetServiceProvider);
+
+    // 桌面小组件：只要 schedule 有数据就推送。它本身不依赖通知开关。
+    if (snapshot != null) {
+      widget.updateForSchedule(snapshot: snapshot, timing: prefs.scheduleTiming);
+    }
+
     if (!prefs.classRemindersEnabled) {
       // 关闭状态下确保历史排程被清空。
-      service.cancelAll();
+      reminder.cancelAll();
       return;
     }
     if (snapshot == null) return;
     try {
-      service.reschedule(
+      reminder.reschedule(
         snapshot: snapshot,
         timing: prefs.scheduleTiming,
         reminderLeadMinutes: prefs.classReminderLeadMinutes,
