@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' show Size;
 
@@ -26,6 +27,14 @@ class HomeWidgetService {
   static const _groupName = 'group.com.uniyi.uni_yi.widget';
 
   // 「下节课」相关 key
+  // 不再在 Dart 端预先挑出"哪一节是下一节"。改成把"今天 + 后 6 天"所有
+  // 课程的绝对起止时间打包成 JSON 数组推到 SharedPreferences，
+  // Kotlin 那边的 widget 在 onUpdate 时根据当前墙上时间挑选第一个还没开始
+  // 的 session。这样 App 不打开 widget 也能跟着系统每 30 分钟刷新自动跳到
+  // 真正的下一节。
+  static const _kNextClassPlan = 'next_class.plan';
+  // 同时保留这一组 fallback 字段：plan 解析失败 / 太老时，原生侧仍能展示
+  // 出最近一次 App 推送过来的"下一节"。
   static const _kCourseName = 'next_class.courseName';
   static const _kTimeRange = 'next_class.timeRange';
   static const _kLocation = 'next_class.location';
@@ -67,6 +76,11 @@ class HomeWidgetService {
     required ScheduleTimingPreference timing,
   }) async {
     try {
+      // 1) 算出未来 7 天里所有有具体时间的 session，落成 JSON。
+      final plan = _buildClassPlan(snapshot: snapshot, timing: timing);
+      await HomeWidget.saveWidgetData(_kNextClassPlan, jsonEncode(plan));
+
+      // 2) 同步给 fallback 字段当快照，防止 plan 失效时 widget 全空。
       final next = _findNextClass(snapshot, timing);
       if (next == null) {
         await HomeWidget.saveWidgetData(_kHasNext, false);
@@ -88,12 +102,70 @@ class HomeWidgetService {
         iOSName: _iosNextClassWidgetName,
       );
       _logger.info(
-        '[WIDGET] 推送下节课 hasNext=${next != null}',
+        '[WIDGET] 推送下节课 plan=${plan.length} 节 fallbackHasNext=${next != null}',
       );
     } catch (error, stackTrace) {
       _logger.warn('[WIDGET] 下节课推送失败 error=$error');
       _logger.debug('[WIDGET] stackTrace=$stackTrace');
     }
+  }
+
+  /// 把课表压成原生 widget 能消费的轻量 JSON：
+  /// `[{ "ts":1779550800000, "te":1779553500000, "name":"高数","loc":"...","teacher":"..." }, ...]`
+  ///
+  /// - ts/te 用毫秒 epoch，原生侧拿到直接 `now < ts` 比较，免去重复时间解析；
+  /// - 范围未来 7 天，配合 widget 默认 30 分钟刷新足够覆盖。
+  List<Map<String, dynamic>> _buildClassPlan({
+    required ScheduleSnapshot snapshot,
+    required ScheduleTimingPreference timing,
+    int rangeDays = 7,
+  }) {
+    final out = <Map<String, dynamic>>[];
+    if (!timing.enabled) return out;
+    final sectionTimes = timing.resolveSectionTimes();
+    if (sectionTimes.isEmpty) return out;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    for (var dayOffset = 0; dayOffset <= rangeDays; dayOffset++) {
+      final date = today.add(Duration(days: dayOffset));
+      final week = snapshot.displayWeek + (dayOffset ~/ 7);
+      final entries = snapshot
+          .entriesForWeek(week: week)
+          .where((e) => e.session.dayOfWeek == date.weekday)
+          .toList();
+      for (final entry in entries) {
+        final session = entry.session;
+        final start = session.startSection;
+        if (start == null) continue;
+        final st = sectionTimes[start];
+        if (st == null) continue;
+        final endSec = session.endSection ?? start;
+        final et = sectionTimes[endSec];
+        final sParsed = _parseHm(st.start);
+        final eParsed = _parseHm(et?.end ?? st.end);
+        if (sParsed == null) continue;
+        final classStart = DateTime(
+          date.year, date.month, date.day, sParsed.$1, sParsed.$2,
+        );
+        final classEnd = eParsed == null
+            ? classStart.add(Duration(minutes: timing.lessonMinutes))
+            : DateTime(
+                date.year, date.month, date.day, eParsed.$1, eParsed.$2,
+              );
+        out.add({
+          'ts': classStart.millisecondsSinceEpoch,
+          'te': classEnd.millisecondsSinceEpoch,
+          'name': entry.course.name,
+          'loc': session.location.fullName,
+          'teacher': entry.course.teacher,
+        });
+      }
+    }
+    // 按起始时间排序，方便原生侧线性扫描第一条 ts > now 的。
+    out.sort((a, b) => (a['ts'] as int).compareTo(b['ts'] as int));
+    return out;
   }
 
   // ---------------- 整周课表 ----------------

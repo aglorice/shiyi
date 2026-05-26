@@ -7,7 +7,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
-import android.net.Uri
 import android.widget.RemoteViews
 import com.uniyi.uni_yi.R
 import es.antonborri.home_widget.HomeWidgetPlugin
@@ -51,9 +50,10 @@ class WeekScheduleWidgetProvider : AppWidgetProvider() {
             }
 
             // 点击跳回 App 课表分支。
+            // 不设 intent.data —— 设了之后 GoRouter 会把它当 initial route，
+            // 找不到匹配会跳到 "Page Not Found"。
             val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
             if (launchIntent != null) {
-                launchIntent.data = Uri.parse("uniyi://widget/week-schedule")
                 val pi = PendingIntent.getActivity(
                     context,
                     1,

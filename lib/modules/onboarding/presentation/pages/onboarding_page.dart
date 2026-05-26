@@ -77,7 +77,6 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
       bullets: [
         '本应用与五邑大学官方无关，仅做技术学习',
         '所有功能均为对公开门户的封装，不绕过任何鉴权',
-        '后续接入的接口若学校认为不合适会随时下线',
       ],
       gradient: _SlideGradient(
         primary: Color(0xFFFFD3DD),
