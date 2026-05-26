@@ -34,6 +34,7 @@ import '../../modules/profile/presentation/pages/settings_logs_page.dart';
 import '../../modules/profile/presentation/pages/settings_schedule_export_page.dart';
 import '../../modules/profile/presentation/pages/settings_schedule_page.dart';
 import '../../modules/profile/presentation/pages/settings_storage_page.dart';
+import '../../modules/profile/presentation/pages/settings_typography_page.dart';
 import '../../modules/schedule/presentation/pages/schedule_page.dart';
 import '../../modules/school_news/domain/entities/school_news.dart';
 import '../../modules/school_news/presentation/pages/school_news_detail_page.dart';
@@ -123,6 +124,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings/appearance',
         builder: (context, state) => const SettingsAppearancePage(),
+      ),
+      GoRoute(
+        path: '/settings/typography',
+        builder: (context, state) => const SettingsTypographyPage(),
       ),
       GoRoute(
         path: '/settings/schedule',

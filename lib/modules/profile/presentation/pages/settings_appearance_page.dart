@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../app/settings/app_preferences.dart';
 import '../../../../app/settings/app_preferences_controller.dart';
@@ -34,6 +35,33 @@ class SettingsAppearancePage extends ConsumerWidget {
             ],
           ),
           PageSection(
+            title: '主题色',
+            // 8 款主题色用 2 列网格放，比一行平铺更松散好选。
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                child: _ThemePalette(
+                  current: preferences.themePreset,
+                  onSelect: controller.setThemePreset,
+                ),
+              ),
+            ],
+          ),
+          PageSection(
+            title: '字体与字号',
+            // 拆出独立子页，字体相关的 UI 放在那里。这里只留个入口 +
+            // 当前选择摘要，避免主外观页太挤。
+            children: [
+              SettingActionTile(
+                icon: Icons.text_fields_rounded,
+                title: '字体与字号',
+                subtitle:
+                    '${preferences.fontPreset.label} · 字号 ${preferences.fontScaleLabel}',
+                onTap: () => context.push('/settings/typography'),
+              ),
+            ],
+          ),
+          PageSection(
             title: '首页',
             children: [
               SettingSwitchTile(
@@ -47,6 +75,7 @@ class SettingsAppearancePage extends ConsumerWidget {
           ),
           PageSection(
             title: '阅读体验',
+            divider: false,
             children: [
               SettingSwitchTile(
                 icon: Icons.contrast_outlined,
@@ -61,77 +90,6 @@ class SettingsAppearancePage extends ConsumerWidget {
                 subtitle: '页面信息密度更高，列表更紧',
                 value: preferences.compactMode,
                 onChanged: controller.setCompactMode,
-              ),
-            ],
-          ),
-          PageSection(
-            title: '主题色',
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    for (final preset in AppThemePreset.values)
-                      _ThemeDot(
-                        preset: preset,
-                        selected: preferences.themePreset == preset,
-                        onTap: () => controller.setThemePreset(preset),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          PageSection(
-            title: '字体',
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-                child: SegmentedButton<AppFontPreset>(
-                  multiSelectionEnabled: false,
-                  showSelectedIcon: false,
-                  segments: AppFontPreset.values
-                      .map(
-                        (preset) => ButtonSegment<AppFontPreset>(
-                          value: preset,
-                          label: Text(preset.label),
-                        ),
-                      )
-                      .toList(),
-                  selected: {preferences.fontPreset},
-                  onSelectionChanged: (selection) {
-                    controller.setFontPreset(selection.first);
-                  },
-                ),
-              ),
-              SettingBlock(
-                padding: const EdgeInsets.fromLTRB(0, 4, 0, 4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        '字号  ${preferences.fontScaleLabel}',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                    ),
-                    Slider(
-                      value: preferences.fontScale,
-                      min: 0.9,
-                      max: 1.2,
-                      divisions: 6,
-                      label: preferences.fontScaleLabel,
-                      onChanged: controller.setFontScale,
-                    ),
-                  ],
-                ),
               ),
             ],
           ),
@@ -229,6 +187,34 @@ class _ThemeModeCard extends StatelessWidget {
   }
 }
 
+/// 主题色调色板：每行 4 个色块卡片，第二行延续。
+class _ThemePalette extends StatelessWidget {
+  const _ThemePalette({required this.current, required this.onSelect});
+
+  final AppThemePreset current;
+  final ValueChanged<AppThemePreset> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 4,
+      crossAxisSpacing: 10,
+      mainAxisSpacing: 12,
+      childAspectRatio: 0.78,
+      children: [
+        for (final preset in AppThemePreset.values)
+          _ThemeDot(
+            preset: preset,
+            selected: current == preset,
+            onTap: () => onSelect(preset),
+          ),
+      ],
+    );
+  }
+}
+
 class _ThemeDot extends StatelessWidget {
   const _ThemeDot({
     required this.preset,
@@ -245,44 +231,51 @@ class _ThemeDot extends StatelessWidget {
     final theme = Theme.of(context);
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(AppRadius.pill),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xxs),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: preset.seedColor,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: selected
-                      ? theme.colorScheme.onSurface
-                      : Colors.transparent,
-                  width: selected ? 2.5 : 0,
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: preset.seedColor,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: selected
+                    ? theme.colorScheme.onSurface
+                    : Colors.transparent,
+                width: selected ? 2.5 : 0,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: preset.seedColor.withValues(alpha: 0.25),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
                 ),
-              ),
-              child: selected
-                  ? const Center(
-                      child: Icon(
-                        Icons.check_rounded,
-                        size: 20,
-                        color: Colors.white,
-                      ),
-                    )
-                  : null,
+              ],
             ),
-            const SizedBox(height: 6),
-            Text(
-              preset.label,
-              style: theme.textTheme.labelMedium?.copyWith(
-                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-              ),
+            child: selected
+                ? const Center(
+                    child: Icon(
+                      Icons.check_rounded,
+                      size: 20,
+                      color: Colors.white,
+                    ),
+                  )
+                : null,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            preset.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelSmall?.copyWith(
+              fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
