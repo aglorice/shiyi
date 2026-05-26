@@ -4,22 +4,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/di/app_providers.dart';
-import '../../../../app/theme/design_tokens.dart';
 import '../../../../integrations/school_portal/sso/slider_captcha.dart';
 import '../../../../integrations/school_portal/sso/sms_login_session.dart';
 import '../../../../shared/widgets/app_snackbar.dart';
-import '../../../../shared/widgets/pixel_pet.dart';
-import '../../../../shared/widgets/surface_card.dart';
 import '../../domain/entities/auth_state.dart';
 import '../controllers/auth_controller.dart';
 import '../controllers/sms_login_controller.dart';
 import '../widgets/slider_captcha_sheet.dart';
 
-/// 登录页。
+/// 仿苹果系统设置/AppleID 风格的单页登录。
 ///
-/// 设计语言上和应用首页对齐：上方是渐变 hero（呼应 `_HomeHero`），
-/// 下方是白色 SurfaceCard 装表单。这样 onboarding → 登录 → 首页一脉相承，
-/// 不再让登录页看起来像被空降进来的"系统页面"。
+/// 一切都在一张页面里：顶部分段控件切换"账号 / 短信"，下方共用同一个
+/// 圆角分组卡片。两条流程的状态分别在 [AuthController] 与
+/// [SmsLoginController] 里独立维护，UI 按当前模式调度对应控制器。
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
 
@@ -52,7 +49,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    // 短信流的错误用顶部 SnackBar 反馈，避免和账号密码的错误源 UI 打架。
+    final theme = Theme.of(context);
+
+    // 短信流的错误也用顶部 SnackBar 反馈，避免和账号密码的错误源 UI 打架。
     ref.listen<SmsLoginState>(smsLoginControllerProvider, (prev, next) {
       final msg = next.errorMessage;
       if (msg != null && msg.isNotEmpty && msg != prev?.errorMessage) {
@@ -65,58 +64,97 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     });
 
     return Scaffold(
-      // 用 LayoutBuilder + ConstrainedBox(minHeight) + SingleChildScrollView：
-      // 不弹键盘时整页占满；弹了键盘时 Hero 自然被滚走，按钮不被压扁。
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
-            return SingleChildScrollView(
-              physics: const ClampingScrollPhysics(),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: IntrinsicHeight(
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 460),
-                      child: _LoginBody(
-                        mode: _mode,
-                        usernameController: _usernameController,
-                        passwordController: _passwordController,
-                        obscurePassword: _obscurePassword,
-                        mobileController: _mobileController,
-                        codeController: _codeController,
-                        isBusy: _isBusy(),
-                        isPrimaryEnabled: _isPrimaryEnabled(),
-                        onSwitchMode: () {
-                          setState(() {
-                            _mode = _mode == _LoginMode.password
-                                ? _LoginMode.sms
-                                : _LoginMode.password;
-                          });
-                          FocusScope.of(context).unfocus();
-                        },
-                        onToggleObscure: () => setState(
-                          () => _obscurePassword = !_obscurePassword,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 22),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 88),
+                const _LoginHero(),
+                const SizedBox(height: 28),
+                _ModeSegmented(
+                  current: _mode,
+                  onChanged: (mode) {
+                    if (mode == _mode) return;
+                    setState(() => _mode = mode);
+                    // 切走前清掉两条流的报错和上一种模式残留的输入焦点。
+                    FocusScope.of(context).unfocus();
+                  },
+                ),
+                const SizedBox(height: 16),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.topCenter,
+                  child: _mode == _LoginMode.password
+                      ? _PasswordForm(
+                          usernameController: _usernameController,
+                          passwordController: _passwordController,
+                          obscurePassword: _obscurePassword,
+                          onToggleObscure: () => setState(
+                            () => _obscurePassword = !_obscurePassword,
+                          ),
+                          onChanged: () => setState(() {}),
+                          onSubmit: _submitPassword,
+                        )
+                      : _SmsForm(
+                          mobileController: _mobileController,
+                          codeController: _codeController,
+                          onChanged: () => setState(() {}),
+                          onSendCode: _onSendCode,
                         ),
-                        onFormChanged: () => setState(() {}),
-                        onSubmitPassword: _submitPassword,
-                        onSendCode: _onSendCode,
-                        onPrimary: _onPrimary,
-                        compact: keyboardOpen,
-                      ),
+                ),
+                const SizedBox(height: 12),
+                _MaybeError(mode: _mode),
+                const SizedBox(height: 24),
+                _PrimaryButton(
+                  label: _primaryLabel(),
+                  busy: _isBusy(),
+                  onPressed: _isPrimaryEnabled() ? _onPrimary : null,
+                ),
+                const SizedBox(height: 14),
+                Center(
+                  child: Text(
+                    _mode == _LoginMode.password
+                        ? '账号即学号，密码与教务系统一致'
+                        : '统一身份认证绑定的手机号才能收到验证码',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.outline,
                     ),
                   ),
                 ),
-              ),
-            );
-          },
+                const SizedBox(height: 24),
+                Center(
+                  child: Text(
+                    '本应用仅用于学习交流，凭证仅保留在本机',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.outline,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 
   // ---------------- 主按钮调度 ----------------
+
+  String _primaryLabel() {
+    switch (_mode) {
+      case _LoginMode.password:
+        return '登录';
+      case _LoginMode.sms:
+        return '登录';
+    }
+  }
 
   bool _isBusy() {
     if (_mode == _LoginMode.password) {
@@ -246,330 +284,42 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 }
 
-/// 主体：上方 Hero 渐变区 + 中段表单卡片 + 底部按钮。
-///
-/// 整页 padding 用 `AppSpacing.pageH`（20）和应用其他页面统一。
-class _LoginBody extends ConsumerWidget {
-  const _LoginBody({
-    required this.mode,
-    required this.usernameController,
-    required this.passwordController,
-    required this.obscurePassword,
-    required this.mobileController,
-    required this.codeController,
-    required this.isBusy,
-    required this.isPrimaryEnabled,
-    required this.onSwitchMode,
-    required this.onToggleObscure,
-    required this.onFormChanged,
-    required this.onSubmitPassword,
-    required this.onSendCode,
-    required this.onPrimary,
-    required this.compact,
-  });
-
-  final _LoginMode mode;
-  final TextEditingController usernameController;
-  final TextEditingController passwordController;
-  final bool obscurePassword;
-  final TextEditingController mobileController;
-  final TextEditingController codeController;
-  final bool isBusy;
-  final bool isPrimaryEnabled;
-  final VoidCallback onSwitchMode;
-  final VoidCallback onToggleObscure;
-  final VoidCallback onFormChanged;
-  final VoidCallback onSubmitPassword;
-  final Future<void> Function() onSendCode;
-  final VoidCallback onPrimary;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final form = mode == _LoginMode.password
-        ? _PasswordForm(
-            usernameController: usernameController,
-            passwordController: passwordController,
-            obscurePassword: obscurePassword,
-            onToggleObscure: onToggleObscure,
-            onChanged: onFormChanged,
-            onSubmit: onSubmitPassword,
-          )
-        : _SmsForm(
-            mobileController: mobileController,
-            codeController: codeController,
-            onChanged: onFormChanged,
-            onSendCode: onSendCode,
-          );
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.pageH),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(height: compact ? AppSpacing.sm : AppSpacing.lg),
-
-          // 1. Hero —— 与首页 _HomeHero 同款渐变 + 像素猫，建立品牌延续性
-          if (!compact) const _LoginHero(),
-          if (compact) const _LoginHeroCompact(),
-
-          SizedBox(height: compact ? AppSpacing.md : AppSpacing.lg),
-
-          // 2. 表单卡片 —— 与全 app 卡片体系一致
-          SurfaceCard(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.lg,
-              AppSpacing.lg,
-              AppSpacing.lg,
-              AppSpacing.md,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 模式切换 segmented 行：当前模式深色字、另一段淡色 + accent dot
-                _ModeRow(mode: mode, onSwitch: onSwitchMode),
-                const SizedBox(height: AppSpacing.lg),
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 240),
-                  curve: Curves.easeOutCubic,
-                  alignment: Alignment.topCenter,
-                  child: form,
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                _MaybeError(mode: mode),
-              ],
-            ),
-          ),
-
-          SizedBox(height: compact ? AppSpacing.md : AppSpacing.lg),
-
-          // 3. 主按钮：渐变填充呼应 hero
-          _GradientPrimaryButton(
-            busy: isBusy,
-            onPressed: isPrimaryEnabled ? onPrimary : null,
-          ),
-
-          const SizedBox(height: AppSpacing.md),
-
-          // 4. 底部提示行：根据模式给一行场景说明
-          _BottomHint(mode: mode),
-
-          SizedBox(height: compact ? AppSpacing.xs : AppSpacing.lg),
-        ],
-      ),
-    );
-  }
-}
-
-// ============================================================
-// Hero 区：与首页 _HomeHero 同款语言
-// ============================================================
-
+/// 顶部品牌区：小尺寸 logo + 大标题 + 短副标题，向 Apple ID 那种"轻品牌、
+/// 重排版"的层级靠齐——logo 不抢戏，标题字够大。
 class _LoginHero extends StatelessWidget {
   const _LoginHero();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        gradient: LinearGradient(
-          colors: [
-            colorScheme.primary,
-            Color.lerp(colorScheme.primary, colorScheme.tertiary, 0.52) ??
-                colorScheme.tertiary,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg,
-          AppSpacing.xl,
-          AppSpacing.md,
-          AppSpacing.lg,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 应用 logo 小章
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.school_rounded,
-                          size: 13,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          '拾邑',
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.6,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  Text(
-                    '欢迎回来',
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      height: 1.05,
-                      letterSpacing: -0.4,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  Text(
-                    '登录五邑大学统一身份认证，把校园生活折叠到一处',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: Colors.white.withValues(alpha: 0.86),
-                      height: 1.45,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // 右下角放品牌像素猫
-            const SizedBox(width: AppSpacing.sm),
-            const PixelPet(type: PixelPetType.cat),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 键盘弹起时的紧凑 Hero：去掉副标题，缩小 padding 和字号。
-class _LoginHeroCompact extends StatelessWidget {
-  const _LoginHeroCompact();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        gradient: LinearGradient(
-          colors: [
-            colorScheme.primary,
-            Color.lerp(colorScheme.primary, colorScheme.tertiary, 0.52) ??
-                colorScheme.tertiary,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.md,
-        AppSpacing.md,
-        AppSpacing.md,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              '欢迎回来',
-              style: theme.textTheme.titleLarge?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.3,
-              ),
-            ),
-          ),
-          Transform.scale(
-            scale: 0.7,
-            child: const PixelPet(type: PixelPetType.cat),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ============================================================
-// 模式切换：表单卡片顶部一行，比独立 segmented control 视觉权重轻
-// ============================================================
-
-class _ModeRow extends StatelessWidget {
-  const _ModeRow({required this.mode, required this.onSwitch});
-
-  final _LoginMode mode;
-  final VoidCallback onSwitch;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final activeLabel = mode == _LoginMode.password ? '账号密码登录' : '短信验证码登录';
-    final altLabel = mode == _LoginMode.password ? '改用短信' : '改用账号';
-
-    return Row(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // 当前模式：accent 色圆点 + 加粗标题
-        Container(
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: theme.colorScheme.primary,
+        ClipRRect(
+          borderRadius: BorderRadius.circular(64 * 0.225),
+          child: Image.asset(
+            'assets/logo/pixel_cat_logo_1024.png',
+            width: 64,
+            height: 64,
+            fit: BoxFit.cover,
           ),
         ),
-        const SizedBox(width: AppSpacing.sm),
-        Expanded(
-          child: Text(
-            activeLabel,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w900,
-              letterSpacing: -0.2,
-            ),
+        const SizedBox(height: 18),
+        Text(
+          '登录拾邑',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.4,
+            height: 1.1,
           ),
         ),
-        // 切换链接：outlined pill chip 风格，符合 app 的 chip 体系
-        InkWell(
-          onTap: onSwitch,
-          borderRadius: BorderRadius.circular(999),
-          child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.md,
-              vertical: AppSpacing.xs,
-            ),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
-              ),
-            ),
-            child: Text(
-              altLabel,
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
+        const SizedBox(height: 6),
+        Text(
+          '使用五邑大学统一身份认证',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
       ],
@@ -577,11 +327,164 @@ class _ModeRow extends StatelessWidget {
   }
 }
 
-// ============================================================
-// 表单：用 Theme.inputDecorationTheme 自带的 OutlineInputBorder
-// （filled 白底 + 圆角 20 + 描边 0.6 outlineVariant），
-// 不再自己手搓下划线/胶囊样式。
-// ============================================================
+/// 与 iOS 13+ 设置里的分段控件视觉一致：浅灰底胶囊，选中段白底 + 软阴影。
+class _ModeSegmented extends StatelessWidget {
+  const _ModeSegmented({required this.current, required this.onChanged});
+
+  final _LoginMode current;
+  final ValueChanged<_LoginMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          _segment(context, _LoginMode.password, '账号'),
+          _segment(context, _LoginMode.sms, '短信'),
+        ],
+      ),
+    );
+  }
+
+  Widget _segment(BuildContext context, _LoginMode mode, String label) {
+    final theme = Theme.of(context);
+    final selected = current == mode;
+    return Expanded(
+      child: GestureDetector(
+        onTap: selected ? null : () => onChanged(mode),
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected
+                ? theme.brightness == Brightness.light
+                    ? Colors.white
+                    : theme.colorScheme.surfaceContainerHigh
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Text(
+            label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// iOS 风格的"分组卡片"：一张白色圆角卡片里放多个 row，row 之间用 hairline
+/// 分隔。比每个字段独立一个 OutlineInputBorder 看起来更"系统级"。
+class _GroupedCard extends StatelessWidget {
+  const _GroupedCard({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final divider = Divider(
+      height: 0.6,
+      thickness: 0.6,
+      indent: 16,
+      endIndent: 16,
+      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.55),
+    );
+
+    final laidOut = <Widget>[];
+    for (var i = 0; i < children.length; i++) {
+      laidOut.add(children[i]);
+      if (i != children.length - 1) {
+        laidOut.add(divider);
+      }
+    }
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.brightness == Brightness.light
+            ? Colors.white
+            : theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+          width: 0.5,
+        ),
+      ),
+      child: Column(children: laidOut),
+    );
+  }
+}
+
+/// 分组卡片里的一行：左侧 18px 图标 + 右侧 borderless TextField。
+class _GroupedRow extends StatelessWidget {
+  const _GroupedRow({
+    required this.icon,
+    required this.child,
+  });
+
+  final IconData icon;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 18,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: child),
+        ],
+      ),
+    );
+  }
+}
+
+/// 用 InputDecoration.collapsed 让 TextField 看起来无边框、和 iOS 设置里的
+/// 分组单行输入对齐。
+InputDecoration _flatField({String? hintText, Widget? suffixIcon}) {
+  return InputDecoration(
+    border: InputBorder.none,
+    enabledBorder: InputBorder.none,
+    focusedBorder: InputBorder.none,
+    disabledBorder: InputBorder.none,
+    errorBorder: InputBorder.none,
+    focusedErrorBorder: InputBorder.none,
+    filled: false,
+    contentPadding: const EdgeInsets.symmetric(vertical: 14),
+    hintText: hintText,
+    counterText: '',
+    suffixIcon: suffixIcon,
+    suffixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+    isDense: true,
+  );
+}
 
 class _PasswordForm extends StatelessWidget {
   const _PasswordForm({
@@ -603,48 +506,42 @@ class _PasswordForm extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
+    return _GroupedCard(
       children: [
-        TextField(
-          controller: usernameController,
-          textInputAction: TextInputAction.next,
-          onChanged: (_) => onChanged(),
-          decoration: InputDecoration(
-            hintText: '请输入学号',
-            labelText: '学号',
-            prefixIcon: Icon(
-              Icons.person_outline_rounded,
-              size: 20,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+        _GroupedRow(
+          icon: Icons.person_outline_rounded,
+          child: TextField(
+            controller: usernameController,
+            decoration: _flatField(hintText: '学号'),
+            textInputAction: TextInputAction.next,
+            keyboardType: TextInputType.text,
+            onChanged: (_) => onChanged(),
           ),
         ),
-        const SizedBox(height: AppSpacing.sm),
-        TextField(
-          controller: passwordController,
-          obscureText: obscurePassword,
-          textInputAction: TextInputAction.done,
-          onChanged: (_) => onChanged(),
-          onSubmitted: (_) => onSubmit(),
-          decoration: InputDecoration(
-            hintText: '请输入教务系统密码',
-            labelText: '密码',
-            prefixIcon: Icon(
-              Icons.lock_outline_rounded,
-              size: 20,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            suffixIcon: IconButton(
-              onPressed: onToggleObscure,
-              splashRadius: 20,
-              icon: Icon(
-                obscurePassword
-                    ? Icons.visibility_outlined
-                    : Icons.visibility_off_outlined,
-                size: 20,
-                color: theme.colorScheme.onSurfaceVariant,
+        _GroupedRow(
+          icon: Icons.lock_outline_rounded,
+          child: TextField(
+            controller: passwordController,
+            obscureText: obscurePassword,
+            decoration: _flatField(
+              hintText: '密码',
+              suffixIcon: GestureDetector(
+                onTap: onToggleObscure,
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8, right: 4),
+                  child: Icon(
+                    obscurePassword
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    size: 18,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ),
             ),
+            onChanged: (_) => onChanged(),
+            onSubmitted: (_) => onSubmit(),
           ),
         ),
       ],
@@ -683,74 +580,62 @@ class _SmsForm extends ConsumerWidget {
       label = '获取验证码';
     }
 
-    return Column(
+    return _GroupedCard(
       children: [
-        TextField(
-          controller: mobileController,
-          keyboardType: TextInputType.phone,
-          maxLength: 11,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          onChanged: (_) => onChanged(),
-          decoration: InputDecoration(
-            hintText: '11 位手机号',
-            labelText: '手机号',
-            counterText: '',
-            prefixIcon: Icon(
-              Icons.smartphone_rounded,
-              size: 20,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+        _GroupedRow(
+          icon: Icons.smartphone_rounded,
+          child: TextField(
+            controller: mobileController,
+            keyboardType: TextInputType.phone,
+            maxLength: 11,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: _flatField(hintText: '11 位手机号'),
+            onChanged: (_) => onChanged(),
           ),
         ),
-        const SizedBox(height: AppSpacing.sm),
-        TextField(
-          controller: codeController,
-          keyboardType: TextInputType.number,
-          maxLength: 6,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          onChanged: (_) => onChanged(),
-          decoration: InputDecoration(
-            hintText: '6 位验证码',
-            labelText: '验证码',
-            counterText: '',
-            prefixIcon: Icon(
-              Icons.password_rounded,
-              size: 20,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            suffixIcon: Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: TextButton(
-                onPressed: canSend && !loading ? onSendCode : null,
-                style: TextButton.styleFrom(
-                  foregroundColor: theme.colorScheme.primary,
-                  disabledForegroundColor: theme.colorScheme.outline,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  textStyle: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (loading) ...[
-                      SizedBox(
-                        width: 12,
-                        height: 12,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 1.6,
-                          color: theme.colorScheme.primary,
+        _GroupedRow(
+          icon: Icons.message_rounded,
+          child: TextField(
+            controller: codeController,
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: _flatField(
+              hintText: '6 位验证码',
+              suffixIcon: Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: canSend && !loading ? onSendCode : null,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (loading) ...[
+                        SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.6,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Text(
+                        label,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: canSend
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.outline,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(width: 6),
                     ],
-                    Text(label),
-                  ],
+                  ),
                 ),
               ),
             ),
-            suffixIconConstraints: const BoxConstraints(minWidth: 0),
+            onChanged: (_) => onChanged(),
           ),
         ),
       ],
@@ -758,10 +643,7 @@ class _SmsForm extends ConsumerWidget {
   }
 }
 
-// ============================================================
-// 错误提示：纯文字 + 图标，不挤进表单本身
-// ============================================================
-
+/// 综合两条流的错误，按当前模式选择性显示。
 class _MaybeError extends ConsumerWidget {
   const _MaybeError({required this.mode});
 
@@ -785,16 +667,16 @@ class _MaybeError extends ConsumerWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.xxs),
+      padding: const EdgeInsets.only(top: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
             Icons.error_outline_rounded,
-            size: 14,
+            size: 16,
             color: theme.colorScheme.error,
           ),
-          const SizedBox(width: 5),
+          const SizedBox(width: 6),
           Expanded(
             child: Text(
               message,
@@ -811,121 +693,43 @@ class _MaybeError extends ConsumerWidget {
   }
 }
 
-// ============================================================
-// 主按钮：渐变填充按钮，呼应 Hero 配色，圆角 20、字重 w900
-// ============================================================
+class _PrimaryButton extends StatelessWidget {
+  const _PrimaryButton({
+    required this.label,
+    required this.busy,
+    required this.onPressed,
+  });
 
-class _GradientPrimaryButton extends StatelessWidget {
-  const _GradientPrimaryButton({required this.busy, required this.onPressed});
-
+  final String label;
   final bool busy;
   final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final enabled = onPressed != null && !busy;
-
-    final gradient = enabled
-        ? LinearGradient(
-            colors: [
-              colorScheme.primary,
-              Color.lerp(colorScheme.primary, colorScheme.tertiary, 0.52) ??
-                  colorScheme.tertiary,
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          )
-        : LinearGradient(
-            colors: [
-              colorScheme.primary.withValues(alpha: 0.30),
-              colorScheme.primary.withValues(alpha: 0.30),
-            ],
-          );
-
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(AppRadius.md),
-      child: InkWell(
-        onTap: enabled ? onPressed : null,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        child: Ink(
-          height: 54,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppRadius.md),
-            gradient: gradient,
-            boxShadow: enabled
-                ? [
-                    BoxShadow(
-                      color: colorScheme.primary.withValues(alpha: 0.28),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
-                    ),
-                  ]
-                : null,
+    return SizedBox(
+      height: 50,
+      child: FilledButton(
+        onPressed: onPressed,
+        style: FilledButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
           ),
-          child: Center(
-            child: busy
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.6,
-                      color: Colors.white,
-                    ),
-                  )
-                : Text(
-                    '登录',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.4,
-                    ),
-                  ),
+          textStyle: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+            letterSpacing: 0.2,
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ============================================================
-// 底部提示
-// ============================================================
-
-class _BottomHint extends StatelessWidget {
-  const _BottomHint({required this.mode});
-
-  final _LoginMode mode;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final hint = mode == _LoginMode.password
-        ? '账号即学号，密码与教务系统一致'
-        : '统一身份认证绑定的手机号才能收到验证码';
-    return Center(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.info_outline_rounded,
-            size: 13,
-            color: theme.colorScheme.outline,
-          ),
-          const SizedBox(width: 5),
-          Flexible(
-            child: Text(
-              hint,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.outline,
-                height: 1.4,
-              ),
-            ),
-          ),
-        ],
+        child: busy
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.4,
+                  color: Colors.white,
+                ),
+              )
+            : Text(label),
       ),
     );
   }
