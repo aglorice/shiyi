@@ -17,6 +17,7 @@ import '../../integrations/electricity_recharge/wyu_electricity_api.dart';
 import '../../integrations/electricity_recharge/wyu_electricity_parser.dart';
 import '../../integrations/graduate_notices/wyu_graduate_notice_api.dart';
 import '../../integrations/hitokoto/hitokoto_api.dart';
+import '../../integrations/notifications/class_reminder_service.dart';
 import '../../integrations/school_news/wyu_school_news_api.dart';
 import '../../integrations/school_portal/school_portal_gateway.dart';
 import '../../integrations/school_portal/sso/credential_transformer.dart';
@@ -75,6 +76,10 @@ final sharedPreferencesProvider = Provider<SharedPreferences>(
 );
 
 final appLoggerProvider = Provider<AppLogger>((ref) => const AppLogger());
+
+final classReminderServiceProvider = Provider<ClassReminderService>(
+  (ref) => ClassReminderService(logger: ref.watch(appLoggerProvider)),
+);
 
 final scheduleIcsExporterProvider = Provider<ScheduleIcsExporter>(
   (ref) => ScheduleIcsExporter(logger: ref.watch(appLoggerProvider)),

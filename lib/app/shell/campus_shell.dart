@@ -5,8 +5,11 @@ import 'package:go_router/go_router.dart';
 import '../../core/error/failure.dart';
 import '../../modules/auth/presentation/controllers/auth_controller.dart';
 import '../../modules/electricity/presentation/controllers/electricity_controller.dart';
+import '../../modules/schedule/domain/entities/schedule_snapshot.dart';
 import '../../modules/schedule/presentation/controllers/schedule_controller.dart';
 import '../layout/breakpoints.dart';
+import '../settings/app_preferences_controller.dart';
+import '../di/app_providers.dart';
 import '../../shared/widgets/constrained_body.dart';
 import '../../shared/widgets/session_expired_dialog.dart';
 
@@ -79,6 +82,26 @@ class _CampusShellState extends ConsumerState<CampusShell> {
     });
   }
 
+  void _maybeRescheduleClassReminders(ScheduleSnapshot? snapshot) {
+    final prefs = ref.read(appPreferencesControllerProvider);
+    final service = ref.read(classReminderServiceProvider);
+    if (!prefs.classRemindersEnabled) {
+      // 关闭状态下确保历史排程被清空。
+      service.cancelAll();
+      return;
+    }
+    if (snapshot == null) return;
+    try {
+      service.reschedule(
+        snapshot: snapshot,
+        timing: prefs.scheduleTiming,
+        reminderLeadMinutes: prefs.classReminderLeadMinutes,
+      );
+    } catch (_) {
+      // 提醒系统的失败不要打断 UI，吞掉。
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen(authControllerProvider, (prev, next) {
@@ -103,6 +126,17 @@ class _CampusShellState extends ConsumerState<CampusShell> {
       if (next.hasError && next.error is SessionExpiredFailure) {
         _onSessionExpired();
       }
+    });
+
+    // 课表 / 提醒偏好任一变化都尝试重新排程上课提醒。
+    // 只在 ScheduleSnapshot 真有数据时排程，避免拿空数据 cancel 已有提醒。
+    ref.listen(scheduleControllerProvider, (_, next) {
+      _maybeRescheduleClassReminders(next.value);
+    });
+    ref.listen(appPreferencesControllerProvider, (_, _) {
+      _maybeRescheduleClassReminders(
+        ref.read(scheduleControllerProvider).value,
+      );
     });
 
     final authAsync = ref.watch(authControllerProvider);

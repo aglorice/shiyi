@@ -81,6 +81,16 @@ class AppPreferencesController extends Notifier<AppPreferences> {
     await _update(state.copyWith(onboardingCompleted: true));
   }
 
+  Future<void> setClassRemindersEnabled(bool value) async {
+    await _update(state.copyWith(classRemindersEnabled: value));
+  }
+
+  /// 上课前 N 分钟提醒；钳制在 0..30 之间。
+  Future<void> setClassReminderLeadMinutes(int minutes) async {
+    final clamped = minutes.clamp(0, 30);
+    await _update(state.copyWith(classReminderLeadMinutes: clamped));
+  }
+
   Future<void> setGithubMirrorBundle(GithubMirrorBundle bundle) async {
     await _update(state.copyWith(githubMirrorBundle: bundle));
   }

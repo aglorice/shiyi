@@ -172,6 +172,8 @@ class AppPreferences {
     this.gymPreferredVenueTypeLabel,
     this.gymTimePreference,
     this.onboardingCompleted = false,
+    this.classRemindersEnabled = false,
+    this.classReminderLeadMinutes = 10,
   });
 
   final AppThemePreset themePreset;
@@ -229,6 +231,12 @@ class AppPreferences {
   /// 完成后再走 router 的常规 redirect。
   final bool onboardingCompleted;
 
+  /// 是否启用上课提醒（本地通知）。默认关，用户在设置里主动开。
+  final bool classRemindersEnabled;
+
+  /// 上课前 N 分钟提醒。允许 0..30，默认 10。
+  final int classReminderLeadMinutes;
+
   /// Computes the current week number based on the saved reference.
   ///
   /// Returns `null` if no reference was ever set.
@@ -285,6 +293,8 @@ class AppPreferences {
     bool clearGymPreferredVenueType = false,
     bool clearGymTimePreference = false,
     bool? onboardingCompleted,
+    bool? classRemindersEnabled,
+    int? classReminderLeadMinutes,
   }) {
     return AppPreferences(
       themePreset: themePreset ?? this.themePreset,
@@ -331,6 +341,10 @@ class AppPreferences {
           ? null
           : (gymTimePreference ?? this.gymTimePreference),
       onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
+      classRemindersEnabled:
+          classRemindersEnabled ?? this.classRemindersEnabled,
+      classReminderLeadMinutes:
+          classReminderLeadMinutes ?? this.classReminderLeadMinutes,
     );
   }
 
@@ -361,6 +375,8 @@ class AppPreferences {
       'app.gym.preferredVenueTypeLabel';
   static const _gymTimePreferenceKey = 'app.gym.timePreference';
   static const _onboardingCompletedKey = 'app.onboarding.completed';
+  static const _classRemindersEnabledKey = 'app.reminder.classEnabled';
+  static const _classReminderLeadKey = 'app.reminder.classLeadMin';
 
   factory AppPreferences.fromSharedPreferences(SharedPreferences preferences) {
     return AppPreferences(
@@ -407,6 +423,10 @@ class AppPreferences {
       ),
       onboardingCompleted:
           preferences.getBool(_onboardingCompletedKey) ?? false,
+      classRemindersEnabled:
+          preferences.getBool(_classRemindersEnabledKey) ?? false,
+      classReminderLeadMinutes:
+          preferences.getInt(_classReminderLeadKey) ?? 10,
     );
   }
 
@@ -515,6 +535,14 @@ class AppPreferences {
       await preferences.remove(_gymTimePreferenceKey);
     }
     await preferences.setBool(_onboardingCompletedKey, onboardingCompleted);
+    await preferences.setBool(
+      _classRemindersEnabledKey,
+      classRemindersEnabled,
+    );
+    await preferences.setInt(
+      _classReminderLeadKey,
+      classReminderLeadMinutes,
+    );
   }
 
   static AppThemePreset _themePresetFromName(String? value) {

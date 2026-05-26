@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../../app/settings/app_preferences.dart';
 import '../../../../app/settings/app_preferences_controller.dart';
+import '../../../../app/di/app_providers.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../shared/widgets/app_snackbar.dart';
 import '../../../../shared/widgets/page_section.dart';
@@ -37,6 +38,34 @@ class _SettingsSchedulePageState extends ConsumerState<SettingsSchedulePage> {
       body: ListView(
         padding: const EdgeInsets.only(bottom: AppSpacing.pageBottomGap),
         children: [
+          PageSection(
+            title: '上课提醒',
+            children: [
+              SettingSwitchTile(
+                icon: Icons.notifications_active_outlined,
+                title: '启用上课提醒',
+                subtitle:
+                    preferences.classRemindersEnabled
+                        ? (preferences.scheduleTiming.enabled
+                            ? '上课前 ${preferences.classReminderLeadMinutes} 分钟推送本地通知'
+                            : '需要先在「具体时间设置」里启用精确时段才能提醒')
+                        : '开启后会按节次时间推送本地通知',
+                value: preferences.classRemindersEnabled,
+                onChanged: (value) =>
+                    _onToggleClassReminders(context, controller, value),
+              ),
+              if (preferences.classRemindersEnabled)
+                SettingActionTile(
+                  icon: Icons.timer_outlined,
+                  title: '提前多久提醒',
+                  subtitle: preferences.classReminderLeadMinutes == 0
+                      ? '准点提醒'
+                      : '上课前 ${preferences.classReminderLeadMinutes} 分钟',
+                  onTap: () => _pickReminderLead(context, controller,
+                      current: preferences.classReminderLeadMinutes),
+                ),
+            ],
+          ),
           PageSection(
             title: '显示',
             children: [
@@ -142,6 +171,80 @@ class _SettingsSchedulePageState extends ConsumerState<SettingsSchedulePage> {
         ],
       ),
     );
+  }
+
+  Future<void> _onToggleClassReminders(
+    BuildContext context,
+    AppPreferencesController controller,
+    bool value,
+  ) async {
+    if (!value) {
+      await controller.setClassRemindersEnabled(false);
+      return;
+    }
+    final service = ref.read(classReminderServiceProvider);
+    final granted = await service.requestPermission();
+    if (!granted) {
+      if (!context.mounted) return;
+      AppSnackBar.show(
+        context,
+        message: '未获得通知权限，无法启用提醒',
+        tone: AppSnackBarTone.error,
+      );
+      return;
+    }
+    await controller.setClassRemindersEnabled(true);
+  }
+
+  Future<void> _pickReminderLead(
+    BuildContext context,
+    AppPreferencesController controller, {
+    required int current,
+  }) async {
+    const options = [0, 5, 10, 15, 20, 30];
+    final picked = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    '提前多久提醒',
+                    style: Theme.of(sheetContext)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                ),
+                for (final minutes in options)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      minutes == current
+                          ? Icons.radio_button_checked_rounded
+                          : Icons.radio_button_unchecked_rounded,
+                      color: Theme.of(sheetContext).colorScheme.primary,
+                    ),
+                    title: Text(minutes == 0 ? '准点提醒' : '$minutes 分钟前'),
+                    onTap: () =>
+                        Navigator.of(sheetContext).pop(minutes),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (picked != null && picked != current) {
+      await controller.setClassReminderLeadMinutes(picked);
+    }
   }
 
   Future<void> _pickImage() async {
