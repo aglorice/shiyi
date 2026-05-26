@@ -48,7 +48,8 @@ class ScheduleTimingPreference {
     evening: TimingBlock(
       start: '19:30',
       sessionCount: 3,
-      longBreakAt: {1},
+      // 晚上默认全部小课间，不预设大课间。
+      longBreakAt: <int>{},
     ),
   );
 
