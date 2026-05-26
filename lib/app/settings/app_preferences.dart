@@ -171,6 +171,7 @@ class AppPreferences {
     this.gymPreferredVenueTypeId,
     this.gymPreferredVenueTypeLabel,
     this.gymTimePreference,
+    this.onboardingCompleted = false,
   });
 
   final AppThemePreset themePreset;
@@ -223,6 +224,10 @@ class AppPreferences {
   final String? gymPreferredVenueTypeId;
   final String? gymPreferredVenueTypeLabel;
   final GymTimePreference? gymTimePreference;
+
+  /// 用户是否已完成首次启动引导。false 时进入 [OnboardingPage]，
+  /// 完成后再走 router 的常规 redirect。
+  final bool onboardingCompleted;
 
   /// Computes the current week number based on the saved reference.
   ///
@@ -279,6 +284,7 @@ class AppPreferences {
     bool clearGymPreferredSport = false,
     bool clearGymPreferredVenueType = false,
     bool clearGymTimePreference = false,
+    bool? onboardingCompleted,
   }) {
     return AppPreferences(
       themePreset: themePreset ?? this.themePreset,
@@ -324,6 +330,7 @@ class AppPreferences {
       gymTimePreference: clearGymTimePreference
           ? null
           : (gymTimePreference ?? this.gymTimePreference),
+      onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
     );
   }
 
@@ -353,6 +360,7 @@ class AppPreferences {
   static const _gymPreferredVenueTypeLabelKey =
       'app.gym.preferredVenueTypeLabel';
   static const _gymTimePreferenceKey = 'app.gym.timePreference';
+  static const _onboardingCompletedKey = 'app.onboarding.completed';
 
   factory AppPreferences.fromSharedPreferences(SharedPreferences preferences) {
     return AppPreferences(
@@ -397,6 +405,8 @@ class AppPreferences {
       gymTimePreference: _gymTimePreferenceFromName(
         preferences.getString(_gymTimePreferenceKey),
       ),
+      onboardingCompleted:
+          preferences.getBool(_onboardingCompletedKey) ?? false,
     );
   }
 
@@ -504,6 +514,7 @@ class AppPreferences {
     } else {
       await preferences.remove(_gymTimePreferenceKey);
     }
+    await preferences.setBool(_onboardingCompletedKey, onboardingCompleted);
   }
 
   static AppThemePreset _themePresetFromName(String? value) {

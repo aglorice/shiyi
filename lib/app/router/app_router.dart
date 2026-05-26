@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../di/app_providers.dart';
+import '../settings/app_preferences_controller.dart';
 import '../../modules/auth/presentation/controllers/auth_controller.dart';
 import '../../modules/auth/presentation/pages/login_page.dart';
 import '../../modules/electricity/presentation/pages/electricity_page.dart';
@@ -19,6 +20,7 @@ import '../../modules/home/presentation/pages/home_page.dart';
 import '../../modules/notices/domain/entities/campus_notice.dart';
 import '../../modules/notices/presentation/pages/notice_detail_page.dart';
 import '../../modules/notices/presentation/pages/notices_page.dart';
+import '../../modules/onboarding/presentation/pages/onboarding_page.dart';
 import '../../modules/personal_info/presentation/pages/app_access_logs_page.dart';
 import '../../modules/personal_info/presentation/pages/auth_logs_page.dart';
 import '../../modules/personal_info/presentation/pages/online_sessions_page.dart';
@@ -57,12 +59,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     logger.info('[ROUTER] auth changed status=$status '
         'isAuth=$prevAuth → $nextAuth, refresh router');
   });
+  // onboarding 完成后也要触发 redirect 重新评估，否则用户点完"开始使用"
+  // 仍然停在 /onboarding。
+  ref.listen<bool>(
+    appPreferencesControllerProvider
+        .select((p) => p.onboardingCompleted),
+    (_, __) => refreshListenable.value++,
+  );
   ref.onDispose(refreshListenable.dispose);
 
   return GoRouter(
     refreshListenable: refreshListenable,
     initialLocation: '/',
     routes: [
+      GoRoute(
+        path: '/onboarding',
+        builder: (context, state) => const OnboardingPage(),
+      ),
       GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
       StatefulShellRoute(
         builder: (context, state, navigationShell) {
@@ -265,8 +278,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ],
     redirect: (context, state) {
       final authAsync = ref.read(authControllerProvider);
+      final preferences = ref.read(appPreferencesControllerProvider);
       final loc = state.matchedLocation;
       final isLogin = loc == '/login';
+      final isOnboarding = loc == '/onboarding';
       final isAuthenticated = authAsync.value?.isAuthenticated ?? false;
       final isPublicNoticeRoute =
           state.matchedLocation == '/notices' ||
@@ -279,8 +294,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return null;
       }
 
+      // 首次启动：还没看过引导 → 先把人引到 /onboarding。
+      // 已认证用户也照样要看一遍（升级到带引导的版本时让用户重温一次新功能）。
+      if (!preferences.onboardingCompleted && !isOnboarding) {
+        return '/onboarding';
+      }
+
+      if (preferences.onboardingCompleted && isOnboarding) {
+        return isAuthenticated ? '/' : '/login';
+      }
+
       if (!isAuthenticated &&
           !isLogin &&
+          !isOnboarding &&
           !isPublicNoticeRoute &&
           !isPublicSchoolNewsRoute) {
         return '/login';

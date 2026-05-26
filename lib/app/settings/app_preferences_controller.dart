@@ -76,6 +76,11 @@ class AppPreferencesController extends Notifier<AppPreferences> {
     await _update(state.copyWith(showHomeHitokoto: value));
   }
 
+  /// 标记首次启动引导已完成。引导页结束时由 Onboarding 主动调用。
+  Future<void> markOnboardingCompleted() async {
+    await _update(state.copyWith(onboardingCompleted: true));
+  }
+
   Future<void> setGithubMirrorBundle(GithubMirrorBundle bundle) async {
     await _update(state.copyWith(githubMirrorBundle: bundle));
   }
