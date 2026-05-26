@@ -183,11 +183,15 @@ class HomeWidgetService {
         // 用 home_widget 提供的 renderFlutterWidget 把 Flutter 视图栅格化成 PNG。
         // 注意：必须在主 isolate / 主 BuildContext 之外，但 home_widget 自己
         // 内部启动了一个 PipelineOwner 跑离屏渲染，调起来很简单。
+        // logicalSize 用 720×480（基线 360×240 的 2 倍）：
+        // - 设备桌面缩放后仍然清晰（正常手机 widget 显示宽度 320–360 dp，
+        //   720 像素的图缩到这个区间不会被放大模糊）；
+        // - week_schedule_widget_view 内部按 size 自适应字号 / 间距，
+        //   2 倍渲染后字号也按比例放大，PNG 仍然是清晰的。
         final imagePath = await HomeWidget.renderFlutterWidget(
           WeekScheduleWidgetView(snapshot: snapshot, timing: timing),
           key: 'week_schedule',
-          // logical pixels；原生 ImageView 会按 DPR 缩放到位。
-          logicalSize: const Size(360, 240),
+          logicalSize: const Size(720, 480),
         );
         if (imagePath is String && imagePath.isNotEmpty) {
           await HomeWidget.saveWidgetData(_kWeekImagePath, imagePath);

@@ -1,15 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 小组件元信息：默认 4×2 单元格，30 分钟刷新一次。
+<!-- 小组件元信息：默认 4×3 单元格，30 分钟刷新一次。
      真正的数据更新由 App 内 home_widget 主动推送，updatePeriodMillis 只是兜底。
 
      widgetFeatures=reconfigurable+configuration_optional 让 Android 12+ 的
      Launcher（包括小米/华为）愿意把这个 widget 暴露在 App 长按菜单里。
-     previewImage 用 ic_launcher 兜底，正式版可以替换成专用预览图。 -->
+     previewImage 用 ic_launcher 兜底，正式版可以替换成专用预览图。
+
+     min/maxWidth+Height 给一个更舒服的初始尺寸，避免拖出来太小看不清楚。 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="220dp"
-    android:minHeight="100dp"
+    android:minWidth="250dp"
+    android:minHeight="120dp"
+    android:minResizeWidth="200dp"
+    android:minResizeHeight="100dp"
     android:targetCellWidth="4"
-    android:targetCellHeight="2"
+    android:targetCellHeight="3"
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/next_class_widget"
     android:resizeMode="horizontal|vertical"
