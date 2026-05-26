@@ -1,9 +1,9 @@
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lottie/lottie.dart';
 
 import '../../../../app/settings/app_preferences_controller.dart';
 import '../../../../app/theme/design_tokens.dart';
@@ -39,7 +39,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
         secondary: Color(0xFFFFE9B0),
         background: Color(0xFFFAF5F0),
       ),
-      illustration: _IllustrationKind.welcome,
+      lottiePath: 'assets/lottie/onboarding_welcome.json',
     ),
     _OnboardingSlide(
       title: '一次登录，处处可用',
@@ -54,7 +54,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
         secondary: Color(0xFFE6D7FF),
         background: Color(0xFFF4F7FB),
       ),
-      illustration: _IllustrationKind.login,
+      lottiePath: 'assets/lottie/onboarding_login.json',
     ),
     _OnboardingSlide(
       title: '凭证只属于你',
@@ -69,7 +69,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
         secondary: Color(0xFFD8F1E5),
         background: Color(0xFFF1F8F4),
       ),
-      illustration: _IllustrationKind.privacy,
+      lottiePath: 'assets/lottie/onboarding_privacy.json',
     ),
     _OnboardingSlide(
       title: '只用于学习交流',
@@ -83,7 +83,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
         secondary: Color(0xFFFFE0C2),
         background: Color(0xFFFAF3F4),
       ),
-      illustration: _IllustrationKind.handshake,
+      lottiePath: 'assets/lottie/onboarding_handshake.json',
     ),
   ];
 
@@ -210,14 +210,14 @@ class _OnboardingSlide {
     required this.subtitle,
     required this.bullets,
     required this.gradient,
-    required this.illustration,
+    required this.lottiePath,
   });
 
   final String title;
   final String subtitle;
   final List<String> bullets;
   final _SlideGradient gradient;
-  final _IllustrationKind illustration;
+  final String lottiePath;
 }
 
 class _SlideGradient {
@@ -231,8 +231,6 @@ class _SlideGradient {
   final Color secondary;
   final Color background;
 }
-
-enum _IllustrationKind { welcome, login, privacy, handshake }
 
 /// 背景：两个大圆形高斯模糊色块，呼应小红书 / Apple 的"光感"风。
 class _GradientBackdrop extends StatelessWidget {
@@ -314,9 +312,12 @@ class _SlideView extends StatelessWidget {
             child: Center(
               child: AspectRatio(
                 aspectRatio: 1,
-                child: _Illustration(
-                  kind: slide.illustration,
-                  gradient: slide.gradient,
+                child: Lottie.asset(
+                  slide.lottiePath,
+                  // Lottie 自带循环，repeat: true 让动画一直跑。
+                  repeat: true,
+                  // 关闭 frameRate 限制让运动更顺滑。
+                  options: LottieOptions(enableMergePaths: true),
                 ),
               ),
             ),
@@ -445,448 +446,3 @@ class _Dots extends StatelessWidget {
   }
 }
 
-// =====================================================================
-// 矢量插图：每张 slide 一组手绘元素，全部 CustomPainter，不需要图片资源
-// =====================================================================
-
-class _Illustration extends StatelessWidget {
-  const _Illustration({required this.kind, required this.gradient});
-
-  final _IllustrationKind kind;
-  final _SlideGradient gradient;
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _IllustrationPainter(kind: kind, gradient: gradient),
-      child: const SizedBox.expand(),
-    );
-  }
-}
-
-class _IllustrationPainter extends CustomPainter {
-  _IllustrationPainter({required this.kind, required this.gradient});
-
-  final _IllustrationKind kind;
-  final _SlideGradient gradient;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    switch (kind) {
-      case _IllustrationKind.welcome:
-        _paintWelcome(canvas, size);
-        break;
-      case _IllustrationKind.login:
-        _paintLogin(canvas, size);
-        break;
-      case _IllustrationKind.privacy:
-        _paintPrivacy(canvas, size);
-        break;
-      case _IllustrationKind.handshake:
-        _paintHandshake(canvas, size);
-        break;
-    }
-  }
-
-  // -------- 1) 欢迎：堆叠的 mini App 卡片 --------
-  void _paintWelcome(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    final cardWidth = w * 0.7;
-    final cardHeight = h * 0.32;
-
-    // 远端两张装饰卡（底层）
-    _drawCard(
-      canvas,
-      Rect.fromCenter(
-        center: Offset(w * 0.36, h * 0.42),
-        width: cardWidth * 0.92,
-        height: cardHeight * 0.92,
-      ),
-      color: gradient.primary.withValues(alpha: 0.85),
-      rotation: -0.06,
-    );
-    _drawCard(
-      canvas,
-      Rect.fromCenter(
-        center: Offset(w * 0.66, h * 0.46),
-        width: cardWidth * 0.96,
-        height: cardHeight * 0.96,
-      ),
-      color: gradient.secondary,
-      rotation: 0.05,
-    );
-
-    // 主卡：最前面，画一些假课程行
-    final mainRect = Rect.fromCenter(
-      center: Offset(w * 0.5, h * 0.55),
-      width: cardWidth,
-      height: cardHeight * 1.2,
-    );
-    _drawCard(
-      canvas,
-      mainRect,
-      color: Colors.white,
-      shadow: true,
-    );
-
-    final padding = mainRect.width * 0.08;
-    final inner = mainRect.deflate(padding);
-    final lineHeight = inner.height / 4.5;
-
-    // 顶部小标题条
-    _drawPill(
-      canvas,
-      Rect.fromLTWH(
-        inner.left,
-        inner.top,
-        inner.width * 0.34,
-        lineHeight * 0.5,
-      ),
-      const Color(0xFF1A1A1A),
-    );
-    _drawPill(
-      canvas,
-      Rect.fromLTWH(
-        inner.left,
-        inner.top + lineHeight * 0.7,
-        inner.width * 0.5,
-        lineHeight * 0.32,
-      ),
-      const Color(0xFFAAAAAA),
-    );
-    // 假课程条目
-    for (var i = 0; i < 2; i++) {
-      final base = inner.top + lineHeight * 1.5 + i * lineHeight * 1.05;
-      _drawPill(
-        canvas,
-        Rect.fromLTWH(
-          inner.left,
-          base,
-          lineHeight * 0.4,
-          lineHeight * 0.7,
-        ),
-        i == 0 ? const Color(0xFF1C8C6E) : const Color(0xFFE8A838),
-      );
-      _drawPill(
-        canvas,
-        Rect.fromLTWH(
-          inner.left + lineHeight * 0.6,
-          base,
-          inner.width * 0.55,
-          lineHeight * 0.35,
-        ),
-        const Color(0xFF222222),
-      );
-      _drawPill(
-        canvas,
-        Rect.fromLTWH(
-          inner.left + lineHeight * 0.6,
-          base + lineHeight * 0.4,
-          inner.width * 0.4,
-          lineHeight * 0.28,
-        ),
-        const Color(0xFFAAAAAA),
-      );
-    }
-
-    // 几颗装饰点
-    _drawDot(canvas, Offset(w * 0.18, h * 0.22), 6, gradient.primary);
-    _drawDot(canvas, Offset(w * 0.86, h * 0.22), 4, gradient.secondary);
-    _drawDot(canvas, Offset(w * 0.82, h * 0.85), 8,
-        gradient.primary.withValues(alpha: 0.8));
-  }
-
-  // -------- 2) 登录：盾牌 + 钥匙 + 一根光线 --------
-  void _paintLogin(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    final center = Offset(w * 0.5, h * 0.5);
-
-    // 圆环
-    final ringPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.018
-      ..color = gradient.primary;
-    canvas.drawCircle(center, w * 0.34, ringPaint);
-
-    final ring2Paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.01
-      ..color = gradient.secondary;
-    canvas.drawCircle(center, w * 0.42, ring2Paint);
-
-    // 中间圆形卡片
-    final cardCircle = Rect.fromCircle(center: center, radius: w * 0.22);
-    canvas.drawCircle(center, w * 0.22,
-        Paint()..color = Colors.white);
-    canvas.drawCircle(
-      center,
-      w * 0.22,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.0
-        ..color = const Color(0x22000000),
-    );
-
-    // 钥匙图标（手绘）
-    final keyPaint = Paint()
-      ..color = const Color(0xFF1A1A1A)
-      ..style = PaintingStyle.fill;
-
-    final keyRing = Rect.fromCircle(
-      center: Offset(cardCircle.center.dx - w * 0.05, cardCircle.center.dy),
-      radius: w * 0.05,
-    );
-    canvas.drawCircle(
-      keyRing.center,
-      w * 0.05,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = w * 0.015
-        ..color = const Color(0xFF1A1A1A),
-    );
-
-    // 钥匙杆
-    final shaftRect = Rect.fromLTWH(
-      keyRing.right - w * 0.005,
-      keyRing.center.dy - w * 0.012,
-      w * 0.13,
-      w * 0.024,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(shaftRect, Radius.circular(w * 0.012)),
-      keyPaint,
-    );
-    // 齿
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          shaftRect.right - w * 0.018,
-          shaftRect.bottom - w * 0.005,
-          w * 0.018,
-          w * 0.04,
-        ),
-        Radius.circular(w * 0.005),
-      ),
-      keyPaint,
-    );
-
-    // 一道光线
-    final ray = Path();
-    ray.moveTo(w * 0.78, h * 0.18);
-    ray.lineTo(w * 0.92, h * 0.06);
-    canvas.drawPath(
-      ray,
-      Paint()
-        ..color = const Color(0xFF1A1A1A)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = w * 0.012
-        ..strokeCap = StrokeCap.round,
-    );
-    _drawDot(canvas, Offset(w * 0.92, h * 0.06), 5, const Color(0xFF1A1A1A));
-
-    // 装饰星点
-    _drawSpark(canvas, Offset(w * 0.18, h * 0.30), w * 0.04);
-    _drawSpark(canvas, Offset(w * 0.82, h * 0.78), w * 0.05);
-  }
-
-  // -------- 3) 隐私：大锁 + 周围浮起的圈 --------
-  void _paintPrivacy(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    final center = Offset(w * 0.5, h * 0.5);
-
-    // 后面三圈
-    for (var i = 0; i < 3; i++) {
-      final r = w * 0.2 + i * w * 0.07;
-      canvas.drawCircle(
-        center,
-        r,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = w * 0.008
-          ..color = (i.isEven ? gradient.primary : gradient.secondary)
-              .withValues(alpha: 0.65 - i * 0.18),
-      );
-    }
-
-    // 锁体
-    final lockBody = Rect.fromCenter(
-      center: Offset(center.dx, center.dy + h * 0.05),
-      width: w * 0.32,
-      height: w * 0.26,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(lockBody, Radius.circular(w * 0.04)),
-      Paint()..color = Colors.white,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(lockBody, Radius.circular(w * 0.04)),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = w * 0.008
-        ..color = const Color(0xFF1A1A1A),
-    );
-
-    // 锁口（弧形）
-    final shacklePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.018
-      ..color = const Color(0xFF1A1A1A)
-      ..strokeCap = StrokeCap.round;
-    final shackleRect = Rect.fromCenter(
-      center: Offset(lockBody.center.dx, lockBody.top),
-      width: lockBody.width * 0.6,
-      height: lockBody.height * 0.9,
-    );
-    canvas.drawArc(shackleRect, math.pi, math.pi, false, shacklePaint);
-
-    // 中心钥匙孔
-    canvas.drawCircle(
-      Offset(lockBody.center.dx, lockBody.center.dy - w * 0.005),
-      w * 0.014,
-      Paint()..color = const Color(0xFF1A1A1A),
-    );
-    canvas.drawRect(
-      Rect.fromCenter(
-        center: Offset(lockBody.center.dx, lockBody.center.dy + w * 0.018),
-        width: w * 0.012,
-        height: w * 0.04,
-      ),
-      Paint()..color = const Color(0xFF1A1A1A),
-    );
-
-    _drawSpark(canvas, Offset(w * 0.2, h * 0.25), w * 0.045);
-    _drawSpark(canvas, Offset(w * 0.78, h * 0.18), w * 0.035);
-  }
-
-  // -------- 4) 握手 / 学习交流：两个错位卡片 + 心形点 --------
-  void _paintHandshake(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-
-    // 两叠卡片
-    _drawCard(
-      canvas,
-      Rect.fromCenter(
-        center: Offset(w * 0.36, h * 0.5),
-        width: w * 0.42,
-        height: h * 0.4,
-      ),
-      color: gradient.primary,
-      rotation: -0.08,
-    );
-    _drawCard(
-      canvas,
-      Rect.fromCenter(
-        center: Offset(w * 0.62, h * 0.52),
-        width: w * 0.42,
-        height: h * 0.4,
-      ),
-      color: gradient.secondary,
-      rotation: 0.08,
-    );
-
-    // 中间一颗心
-    final heartCenter = Offset(w * 0.5, h * 0.5);
-    final heartSize = w * 0.16;
-    final heartPath = Path();
-    heartPath.moveTo(heartCenter.dx, heartCenter.dy + heartSize * 0.35);
-    heartPath.cubicTo(
-      heartCenter.dx - heartSize * 0.85,
-      heartCenter.dy - heartSize * 0.2,
-      heartCenter.dx - heartSize * 0.55,
-      heartCenter.dy - heartSize * 0.85,
-      heartCenter.dx,
-      heartCenter.dy - heartSize * 0.35,
-    );
-    heartPath.cubicTo(
-      heartCenter.dx + heartSize * 0.55,
-      heartCenter.dy - heartSize * 0.85,
-      heartCenter.dx + heartSize * 0.85,
-      heartCenter.dy - heartSize * 0.2,
-      heartCenter.dx,
-      heartCenter.dy + heartSize * 0.35,
-    );
-    canvas.drawPath(
-      heartPath,
-      Paint()..color = const Color(0xFFE57373),
-    );
-
-    // 装饰点
-    _drawDot(canvas, Offset(w * 0.2, h * 0.2), 6, const Color(0xFF1A1A1A));
-    _drawDot(canvas, Offset(w * 0.82, h * 0.18), 5, const Color(0xFF1A1A1A));
-    _drawDot(canvas, Offset(w * 0.82, h * 0.82), 8, gradient.primary);
-  }
-
-  // -------------------- 工具 --------------------
-
-  void _drawCard(
-    Canvas canvas,
-    Rect rect, {
-    required Color color,
-    double rotation = 0,
-    bool shadow = false,
-  }) {
-    canvas.save();
-    canvas.translate(rect.center.dx, rect.center.dy);
-    canvas.rotate(rotation);
-    canvas.translate(-rect.center.dx, -rect.center.dy);
-    if (shadow) {
-      final shadowPath = Path()
-        ..addRRect(
-          RRect.fromRectAndRadius(
-            rect.shift(const Offset(0, 8)),
-            const Radius.circular(20),
-          ),
-        );
-      canvas.drawShadow(shadowPath, Colors.black.withValues(alpha: 0.18), 16, true);
-    }
-    final r = RRect.fromRectAndRadius(rect, const Radius.circular(20));
-    canvas.drawRRect(r, Paint()..color = color);
-    canvas.drawRRect(
-      r,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 0.6
-        ..color = const Color(0x22000000),
-    );
-    canvas.restore();
-  }
-
-  void _drawPill(Canvas canvas, Rect rect, Color color) {
-    final r = RRect.fromRectAndRadius(
-      rect,
-      Radius.circular(rect.height * 0.45),
-    );
-    canvas.drawRRect(r, Paint()..color = color.withValues(alpha: 0.85));
-  }
-
-  void _drawDot(Canvas canvas, Offset center, double radius, Color color) {
-    canvas.drawCircle(center, radius, Paint()..color = color);
-  }
-
-  void _drawSpark(Canvas canvas, Offset center, double size) {
-    final paint = Paint()
-      ..color = const Color(0xFF1A1A1A)
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = size * 0.18;
-    canvas.drawLine(
-      Offset(center.dx - size, center.dy),
-      Offset(center.dx + size, center.dy),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(center.dx, center.dy - size),
-      Offset(center.dx, center.dy + size),
-      paint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _IllustrationPainter old) {
-    return old.kind != kind || old.gradient != gradient;
-  }
-}
