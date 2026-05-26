@@ -291,6 +291,30 @@ class _SlideView extends StatelessWidget {
                 repeat: true,
                 fit: BoxFit.contain,
                 options: LottieOptions(enableMergePaths: true),
+                // 任何 JSON 解析异常 / 渲染异常都不要再让整页变红。
+                // 退化成一个柔色的 accent 圆点占位，文字部分仍可读。
+                errorBuilder: (context, error, stack) {
+                  return Center(
+                    child: Container(
+                      width: 140,
+                      height: 140,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: slide.tone.accent.withValues(alpha: 0.18),
+                      ),
+                      child: Center(
+                        child: Container(
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: slide.tone.accent.withValues(alpha: 0.42),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
           ),
