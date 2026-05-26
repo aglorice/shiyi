@@ -9,6 +9,7 @@ import '../../../../shared/widgets/surface_card.dart';
 import '../../../schedule/domain/entities/schedule_snapshot.dart';
 import '../../domain/entities/grades_snapshot.dart';
 import '../controllers/grades_controller.dart';
+import '../widgets/grades_analytics.dart';
 
 class GradesPage extends ConsumerStatefulWidget {
   const GradesPage({super.key});
@@ -49,6 +50,10 @@ class _GradesPageState extends ConsumerState<GradesPage> {
                     onPickTerm: () => _showTermPicker(snapshot),
                   ),
                   const SizedBox(height: 16),
+                  if (snapshot.records.isNotEmpty) ...[
+                    GradesAnalytics(snapshot: snapshot),
+                    const SizedBox(height: 16),
+                  ],
                   _TermFilterBar(
                     terms: snapshot.filterTerms,
                     selectedTermId: selectedTerm?.id ?? '',
