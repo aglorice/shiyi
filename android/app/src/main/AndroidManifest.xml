@@ -74,6 +74,18 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/next_class_widget_info" />
         </receiver>
+        <!-- 桌面小组件：整周课表。 -->
+        <receiver
+            android:name=".widget.WeekScheduleWidgetProvider"
+            android:exported="false"
+            android:label="本周课表">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/week_schedule_widget_info" />
+        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
