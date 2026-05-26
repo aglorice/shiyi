@@ -14,12 +14,13 @@ import '../widgets/slider_captcha_sheet.dart';
 
 /// 单页登录。
 ///
-/// 设计取向：现代移动端登录页（Notion / 小红书 / Linear），三段式：
-///   1. 顶部品牌区：左对齐 60px logo + 大标题 + 副标题，不再居中堆叠。
-///   2. 中部表单区：下划线 Tab 切换"账号 / 短信"，下面是 pill 形输入框。
-///   3. 底部行动区：主按钮锚定在底部安全区，方便单手按下。
+/// 设计取向：Notion / Stripe 极简风。
+///   - 顶部：小 logo + 短标题 + 一行副标题。
+///   - 中段：默认账号密码登录，输入框是下划线极简款。
+///   - 底部：纯黑按钮 + "用短信验证码登录"文字链接（不再用 Tab）。
 ///
-/// 两条流程的状态分别由 [AuthController] 和 [SmsLoginController] 维护。
+/// 短信模式由内部布尔标志切换，渐变到同一组下划线输入框，避免 Tab 那种
+/// 重型导航控件出现在登录页这种轻量场景。
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
 
@@ -65,44 +66,51 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     });
 
     return Scaffold(
-      // SafeArea + LayoutBuilder：键盘弹起时退化成滚动布局避免溢出，
-      // 否则用 Column + Spacer 让按钮锚定在底部 24px。
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
             final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
-            final body = ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: _LoginBody(
-                mode: _mode,
-                usernameController: _usernameController,
-                passwordController: _passwordController,
-                obscurePassword: _obscurePassword,
-                mobileController: _mobileController,
-                codeController: _codeController,
-                isBusy: _isBusy(),
-                isPrimaryEnabled: _isPrimaryEnabled(),
-                onModeChanged: (m) {
-                  if (m == _mode) return;
-                  setState(() => _mode = m);
-                  FocusScope.of(context).unfocus();
-                },
-                onToggleObscure: () =>
-                    setState(() => _obscurePassword = !_obscurePassword),
-                onFormChanged: () => setState(() {}),
-                onSubmitPassword: _submitPassword,
-                onSendCode: _onSendCode,
-                onPrimary: _onPrimary,
-                compact: keyboardOpen,
+            return SingleChildScrollView(
+              physics: keyboardOpen
+                  ? const ClampingScrollPhysics()
+                  : const NeverScrollableScrollPhysics(),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight,
+                ),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 380),
+                    child: _LoginBody(
+                      mode: _mode,
+                      usernameController: _usernameController,
+                      passwordController: _passwordController,
+                      obscurePassword: _obscurePassword,
+                      mobileController: _mobileController,
+                      codeController: _codeController,
+                      isBusy: _isBusy(),
+                      isPrimaryEnabled: _isPrimaryEnabled(),
+                      onSwitchMode: () {
+                        setState(() {
+                          _mode = _mode == _LoginMode.password
+                              ? _LoginMode.sms
+                              : _LoginMode.password;
+                        });
+                        FocusScope.of(context).unfocus();
+                      },
+                      onToggleObscure: () => setState(
+                        () => _obscurePassword = !_obscurePassword,
+                      ),
+                      onFormChanged: () => setState(() {}),
+                      onSubmitPassword: _submitPassword,
+                      onSendCode: _onSendCode,
+                      onPrimary: _onPrimary,
+                      compact: keyboardOpen,
+                    ),
+                  ),
+                ),
               ),
             );
-
-            if (keyboardOpen) {
-              return SingleChildScrollView(
-                child: Center(child: body),
-              );
-            }
-            return Center(child: body);
           },
         ),
       ),
@@ -239,7 +247,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 }
 
-/// 主体 column。键盘没弹时用 Spacer 把按钮挤到底；键盘弹了由父级降级成滚动。
+/// 登录主体。一段式 Column，从上往下：
+///   - 顶部 spacer（约 18% 屏高）
+///   - logo + 标题 + 副标题
+///   - 间距
+///   - 表单（下划线输入）
+///   - 错误（如有）
+///   - 按钮
+///   - 底部链接：切换模式 + 密码与教务系统一致提示
 class _LoginBody extends ConsumerWidget {
   const _LoginBody({
     required this.mode,
@@ -250,7 +265,7 @@ class _LoginBody extends ConsumerWidget {
     required this.codeController,
     required this.isBusy,
     required this.isPrimaryEnabled,
-    required this.onModeChanged,
+    required this.onSwitchMode,
     required this.onToggleObscure,
     required this.onFormChanged,
     required this.onSubmitPassword,
@@ -267,7 +282,7 @@ class _LoginBody extends ConsumerWidget {
   final TextEditingController codeController;
   final bool isBusy;
   final bool isPrimaryEnabled;
-  final ValueChanged<_LoginMode> onModeChanged;
+  final VoidCallback onSwitchMode;
   final VoidCallback onToggleObscure;
   final VoidCallback onFormChanged;
   final VoidCallback onSubmitPassword;
@@ -277,77 +292,74 @@ class _LoginBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
+    final form = mode == _LoginMode.password
+        ? _PasswordForm(
+            usernameController: usernameController,
+            passwordController: passwordController,
+            obscurePassword: obscurePassword,
+            onToggleObscure: onToggleObscure,
+            onChanged: onFormChanged,
+            onSubmit: onSubmitPassword,
+          )
+        : _SmsForm(
+            mobileController: mobileController,
+            codeController: codeController,
+            onChanged: onFormChanged,
+            onSendCode: onSendCode,
+          );
 
-    final hint = mode == _LoginMode.password
-        ? '账号即学号，密码与教务系统一致'
-        : '统一身份认证绑定的手机号才能收到验证码';
+    final modeHint = mode == _LoginMode.password ? '改用短信验证码' : '改用账号密码';
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(height: compact ? 16 : 56),
-          // 1. 品牌：左对齐顶部，logo + 大标题 + 副标题
+          SizedBox(height: compact ? 16 : 64),
+
+          // —— 品牌区：左对齐
           _BrandHeader(compact: compact),
-          SizedBox(height: compact ? 24 : 40),
-          // 2. 模式切换：下划线 Tab，比分段控件轻
-          _UnderlineTabs(
-            current: mode,
-            onChanged: onModeChanged,
-          ),
-          const SizedBox(height: 28),
-          // 3. 表单：pill 形输入框
+
+          SizedBox(height: compact ? 28 : 44),
+
+          // —— 表单
           AnimatedSize(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
             alignment: Alignment.topCenter,
-            child: mode == _LoginMode.password
-                ? _PasswordForm(
-                    usernameController: usernameController,
-                    passwordController: passwordController,
-                    obscurePassword: obscurePassword,
-                    onToggleObscure: onToggleObscure,
-                    onChanged: onFormChanged,
-                    onSubmit: onSubmitPassword,
-                  )
-                : _SmsForm(
-                    mobileController: mobileController,
-                    codeController: codeController,
-                    onChanged: onFormChanged,
-                    onSendCode: onSendCode,
-                  ),
+            child: form,
           ),
-          const SizedBox(height: 12),
+
+          const SizedBox(height: 16),
           _MaybeError(mode: mode),
-          // 4. 用 Spacer 把按钮挤到底，行动区始终在拇指热区。
-          if (!compact) const Spacer(),
-          if (compact) const SizedBox(height: 28),
+
+          SizedBox(height: compact ? 28 : 36),
+
+          // —— 主按钮：纯黑
           _PrimaryButton(
             busy: isBusy,
             onPressed: isPrimaryEnabled ? onPrimary : null,
           ),
-          const SizedBox(height: 14),
-          Text(
-            hint,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.outline,
-              height: 1.4,
-            ),
+
+          const SizedBox(height: 18),
+
+          // —— 切换模式（文字链接，不抢戏）
+          _TextLink(
+            label: modeHint,
+            onTap: onSwitchMode,
           ),
-          SizedBox(height: compact ? 8 : 24),
+
+          // 让上半内容不至于撑到底部，剩余空间留给键盘弹起
+          SizedBox(height: compact ? 8 : 56),
         ],
       ),
     );
   }
 }
 
-/// 品牌区：左对齐 60px logo + 大标题 + 副标题。
+/// 品牌区：左对齐 logo + 大标题 + 副标题。
 ///
-/// 一改之前居中堆叠的"罗列式"，对齐到内容左边缘（与表单同列），整页有清晰
-/// 的左对齐 grid，看起来像 Notion / Linear / 小红书的入口页。
+/// 标题改成两个字"登录"，配合 displayMedium 看得清却不挤行；副标题给场景。
 class _BrandHeader extends StatelessWidget {
   const _BrandHeader({required this.compact});
 
@@ -356,7 +368,7 @@ class _BrandHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final logoSize = compact ? 48.0 : 60.0;
+    final logoSize = compact ? 44.0 : 56.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -370,8 +382,8 @@ class _BrandHeader extends StatelessWidget {
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
@@ -385,27 +397,26 @@ class _BrandHeader extends StatelessWidget {
             ),
           ),
         ),
-        SizedBox(height: compact ? 16 : 24),
+        SizedBox(height: compact ? 16 : 28),
         Text(
-          '嗨，欢迎回来',
-          textAlign: TextAlign.left,
+          '登录',
           style: (compact
-                  ? theme.textTheme.headlineMedium
-                  : theme.textTheme.displaySmall)
+                  ? theme.textTheme.headlineLarge
+                  : theme.textTheme.displayMedium)
               ?.copyWith(
             fontWeight: FontWeight.w900,
-            letterSpacing: -0.6,
-            height: 1.05,
-            color: const Color(0xFF1A1A1A),
+            letterSpacing: -1.0,
+            height: 1.0,
+            color: const Color(0xFF111111),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         Text(
-          '使用学号或手机号登录五邑大学统一身份认证',
-          textAlign: TextAlign.left,
+          '欢迎回来，使用五邑大学统一身份认证继续',
           style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+            color: const Color(0xFF666666),
             height: 1.5,
+            fontSize: 14,
           ),
         ),
       ],
@@ -413,116 +424,10 @@ class _BrandHeader extends StatelessWidget {
   }
 }
 
-/// 下划线 Tab：左对齐两个文字按钮，下方滑动一段 accent 色短横线指示当前。
-/// 比胶囊状的 segmented control 视觉重量轻，留白更多，符合现代登录页风格。
-class _UnderlineTabs extends StatelessWidget {
-  const _UnderlineTabs({required this.current, required this.onChanged});
-
-  final _LoginMode current;
-  final ValueChanged<_LoginMode> onChanged;
-
-  static const _items = [
-    (_LoginMode.password, '账号密码'),
-    (_LoginMode.sms, '短信验证码'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            for (final item in _items) ...[
-              _Tab(
-                label: item.$2,
-                selected: current == item.$1,
-                onTap: () => onChanged(item.$1),
-              ),
-              const SizedBox(width: 24),
-            ],
-          ],
-        ),
-        const SizedBox(height: 12),
-        // 底部 hairline + accent 短横线
-        SizedBox(
-          height: 2,
-          child: LayoutBuilder(
-            builder: (ctx, constraints) {
-              final theme = Theme.of(ctx);
-              return Stack(
-                children: [
-                  Positioned.fill(
-                    child: Container(
-                      color: theme.colorScheme.outlineVariant
-                          .withValues(alpha: 0.40),
-                    ),
-                  ),
-                  AnimatedAlign(
-                    duration: const Duration(milliseconds: 260),
-                    curve: Curves.easeOutCubic,
-                    alignment: current == _LoginMode.password
-                        ? Alignment.centerLeft
-                        : Alignment.centerLeft +
-                            const Alignment(0.45, 0), // 偏右一点
-                    child: Container(
-                      // 第二段宽一点对应"短信验证码"5 个字
-                      width: current == _LoginMode.password ? 64 : 90,
-                      height: 2,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary,
-                        borderRadius: BorderRadius.circular(1),
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _Tab extends StatelessWidget {
-  const _Tab({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Text(
-          label,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w800,
-            color: selected
-                ? theme.colorScheme.onSurface
-                : theme.colorScheme.outline,
-            letterSpacing: -0.2,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 单个 pill 输入框：圆角 14、surfaceContainerHighest 浅灰填充、无描边。
-/// 关注就把填充色加深一点点，配合柔光圈边作为聚焦反馈，比改边框颜色更细腻。
-class _PillField extends StatefulWidget {
-  const _PillField({
+/// 下划线极简输入框：左图标 + 文字 + 底部 1px 横线。
+/// focus 时横线变 accent + 加粗到 1.6px，hint 文字色淡，字段本身字号 16。
+class _UnderlineField extends StatefulWidget {
+  const _UnderlineField({
     required this.controller,
     required this.icon,
     required this.hint,
@@ -549,10 +454,10 @@ class _PillField extends StatefulWidget {
   final TextInputAction? textInputAction;
 
   @override
-  State<_PillField> createState() => _PillFieldState();
+  State<_UnderlineField> createState() => _UnderlineFieldState();
 }
 
-class _PillFieldState extends State<_PillField> {
+class _UnderlineFieldState extends State<_UnderlineField> {
   final _focusNode = FocusNode();
   bool _focused = false;
 
@@ -577,32 +482,17 @@ class _PillFieldState extends State<_PillField> {
     final theme = Theme.of(context);
     final accent = theme.colorScheme.primary;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
-      decoration: BoxDecoration(
-        color: _focused
-            ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.95)
-            : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: _focused
-              ? accent.withValues(alpha: 0.55)
-              : Colors.transparent,
-          width: 1.4,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
           children: [
             Icon(
               widget.icon,
               size: 18,
               color: _focused
                   ? accent
-                  : theme.colorScheme.onSurfaceVariant
-                      .withValues(alpha: 0.85),
+                  : const Color(0xFF999999),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -617,8 +507,10 @@ class _PillFieldState extends State<_PillField> {
                 onSubmitted: widget.onSubmitted,
                 textInputAction: widget.textInputAction,
                 cursorColor: accent,
-                style: theme.textTheme.bodyLarge?.copyWith(
+                style: const TextStyle(
+                  fontSize: 16,
                   fontWeight: FontWeight.w600,
+                  color: Color(0xFF111111),
                   letterSpacing: 0.2,
                 ),
                 decoration: InputDecoration(
@@ -626,10 +518,11 @@ class _PillFieldState extends State<_PillField> {
                   enabledBorder: InputBorder.none,
                   focusedBorder: InputBorder.none,
                   filled: false,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
                   hintText: widget.hint,
-                  hintStyle: theme.textTheme.bodyLarge?.copyWith(
-                    color: theme.colorScheme.outline,
+                  hintStyle: const TextStyle(
+                    fontSize: 16,
+                    color: Color(0xFFAAAAAA),
                     fontWeight: FontWeight.w500,
                   ),
                   counterText: '',
@@ -640,7 +533,18 @@ class _PillFieldState extends State<_PillField> {
             if (widget.suffix != null) widget.suffix!,
           ],
         ),
-      ),
+        // 下划线：未聚焦淡灰，聚焦 accent 加粗
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          height: _focused ? 1.6 : 1,
+          decoration: BoxDecoration(
+            color: _focused
+                ? accent
+                : const Color(0xFFE5E5E5),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -664,18 +568,17 @@ class _PasswordForm extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Column(
       children: [
-        _PillField(
+        _UnderlineField(
           controller: usernameController,
           icon: Icons.person_outline_rounded,
           hint: '学号',
           textInputAction: TextInputAction.next,
           onChanged: (_) => onChanged(),
         ),
-        const SizedBox(height: 12),
-        _PillField(
+        const SizedBox(height: 8),
+        _UnderlineField(
           controller: passwordController,
           icon: Icons.lock_outline_rounded,
           hint: '密码',
@@ -687,13 +590,13 @@ class _PasswordForm extends StatelessWidget {
             onTap: onToggleObscure,
             behavior: HitTestBehavior.opaque,
             child: Padding(
-              padding: const EdgeInsets.only(left: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
               child: Icon(
                 obscurePassword
                     ? Icons.visibility_outlined
                     : Icons.visibility_off_outlined,
                 size: 18,
-                color: theme.colorScheme.onSurfaceVariant,
+                color: const Color(0xFF999999),
               ),
             ),
           ),
@@ -719,6 +622,7 @@ class _SmsForm extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final accent = theme.colorScheme.primary;
     final smsState = ref.watch(smsLoginControllerProvider);
     final mobileLooksValid = mobileController.text.trim().length == 11;
     final canSend = mobileLooksValid && smsState.canSendCode;
@@ -736,7 +640,7 @@ class _SmsForm extends ConsumerWidget {
 
     return Column(
       children: [
-        _PillField(
+        _UnderlineField(
           controller: mobileController,
           icon: Icons.smartphone_rounded,
           hint: '11 位手机号',
@@ -745,10 +649,10 @@ class _SmsForm extends ConsumerWidget {
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           onChanged: (_) => onChanged(),
         ),
-        const SizedBox(height: 12),
-        _PillField(
+        const SizedBox(height: 8),
+        _UnderlineField(
           controller: codeController,
-          icon: Icons.message_rounded,
+          icon: Icons.password_rounded,
           hint: '6 位验证码',
           keyboardType: TextInputType.number,
           maxLength: 6,
@@ -758,7 +662,7 @@ class _SmsForm extends ConsumerWidget {
             behavior: HitTestBehavior.opaque,
             onTap: canSend && !loading ? onSendCode : null,
             child: Padding(
-              padding: const EdgeInsets.only(left: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -768,17 +672,18 @@ class _SmsForm extends ConsumerWidget {
                       height: 12,
                       child: CircularProgressIndicator(
                         strokeWidth: 1.6,
-                        color: theme.colorScheme.primary,
+                        color: accent,
                       ),
                     ),
                     const SizedBox(width: 6),
                   ],
                   Text(
                     label,
-                    style: theme.textTheme.bodyMedium?.copyWith(
+                    style: TextStyle(
+                      fontSize: 14,
                       color: canSend
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.outline,
+                          ? accent
+                          : const Color(0xFF999999),
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -815,35 +720,31 @@ class _MaybeError extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.error_outline_rounded,
-            size: 16,
-            color: theme.colorScheme.error,
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              message,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.error,
-                fontWeight: FontWeight.w600,
-                height: 1.35,
-              ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          Icons.error_outline_rounded,
+          size: 16,
+          color: theme.colorScheme.error,
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            message,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.error,
+              fontWeight: FontWeight.w600,
+              height: 1.35,
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-/// 主按钮：disabled 时保留品牌色但降低饱和度，不再死灰。
-/// busy 时换成圈圈但保留按钮形状不抖动。
+/// 主按钮：纯黑实心。disabled 时切到 8% 黑底 + 35% 黑字，永远不会出现"病号绿"。
 class _PrimaryButton extends StatelessWidget {
   const _PrimaryButton({
     required this.busy,
@@ -855,20 +756,15 @@ class _PrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final accent = theme.colorScheme.primary;
-    final disabled = onPressed == null && !busy;
-
     return SizedBox(
       height: 54,
       child: FilledButton(
         onPressed: onPressed,
         style: FilledButton.styleFrom(
-          backgroundColor: accent,
-          foregroundColor: theme.colorScheme.onPrimary,
-          // disabled 时降低透明度而不是切灰色，保留品牌质感
-          disabledBackgroundColor: accent.withValues(alpha: 0.32),
-          disabledForegroundColor: Colors.white.withValues(alpha: 0.85),
+          backgroundColor: const Color(0xFF111111),
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: const Color(0xFF111111).withValues(alpha: 0.08),
+          disabledForegroundColor: const Color(0xFF111111).withValues(alpha: 0.35),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -877,7 +773,7 @@ class _PrimaryButton extends StatelessWidget {
             fontSize: 16,
             letterSpacing: 0.2,
           ),
-          elevation: disabled ? 0 : 0,
+          elevation: 0,
         ),
         child: busy
             ? const SizedBox(
@@ -889,6 +785,37 @@ class _PrimaryButton extends StatelessWidget {
                 ),
               )
             : const Text('登录'),
+      ),
+    );
+  }
+}
+
+/// 文字链接：切换模式或其他次级动作。淡灰主体 + accent 强调动词。
+class _TextLink extends StatelessWidget {
+  const _TextLink({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: theme.colorScheme.primary,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ),
       ),
     );
   }
