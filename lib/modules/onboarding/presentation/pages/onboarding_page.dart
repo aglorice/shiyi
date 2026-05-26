@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:lottie/lottie.dart';
 
 import '../../../../app/settings/app_preferences_controller.dart';
+import '../widgets/onboarding_illustrations.dart';
 
 /// 首次启动引导页。
 ///
-/// 设计取向：editorial / Linear / Headspace 风。每张 slide 一个 Lottie 主视觉
-/// + 大字标题 + 一行简短正文，舍弃 bullet list 与玻璃卡片，让动画呼吸。
+/// 设计取向：editorial / Linear / Headspace 风。每张 slide 一个 CustomPainter
+/// 矢量插图（之前的 Lottie 在某些字段上踩到 lottie-flutter 解析坑，干脆换掉）
+/// + 大字标题 + 一行简短正文，舍弃 bullet list 与玻璃卡片，让插图呼吸。
 ///
 /// - 顶部 4 段 progress segments + 跳过；底部宽按钮带箭头。
 /// - 背景跟随当前 slide 的色调染色，整体由柔光 vignette 而不是多 blob 堆叠。
@@ -32,7 +33,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
         accent: Color(0xFFE38B5C),
         wash: Color(0xFFFAF1E8),
       ),
-      lottiePath: 'assets/lottie/onboarding_welcome.json',
+      kind: OnboardingIllustrationKind.welcome,
     ),
     _OnboardingSlide(
       caption: '登录',
@@ -42,7 +43,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
         accent: Color(0xFF6E83C7),
         wash: Color(0xFFEFF2FA),
       ),
-      lottiePath: 'assets/lottie/onboarding_login.json',
+      kind: OnboardingIllustrationKind.login,
     ),
     _OnboardingSlide(
       caption: '隐私',
@@ -52,7 +53,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
         accent: Color(0xFF4FAE7F),
         wash: Color(0xFFEDF6F0),
       ),
-      lottiePath: 'assets/lottie/onboarding_privacy.json',
+      kind: OnboardingIllustrationKind.privacy,
     ),
     _OnboardingSlide(
       caption: '说明',
@@ -62,7 +63,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
         accent: Color(0xFFD06684),
         wash: Color(0xFFFAF0F2),
       ),
-      lottiePath: 'assets/lottie/onboarding_handshake.json',
+      kind: OnboardingIllustrationKind.learning,
     ),
   ];
 
@@ -157,14 +158,14 @@ class _OnboardingSlide {
     required this.title,
     required this.body,
     required this.tone,
-    required this.lottiePath,
+    required this.kind,
   });
 
   final String caption;
   final String title;
   final String body;
   final _SlideTone tone;
-  final String lottiePath;
+  final OnboardingIllustrationKind kind;
 }
 
 class _SlideTone {
@@ -282,39 +283,13 @@ class _SlideView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Lottie 视觉占主区，独占大块视觉权重。
+          // 自绘矢量插图：占主区，独占大块视觉权重。
           Expanded(
             flex: 6,
             child: Center(
-              child: Lottie.asset(
-                slide.lottiePath,
-                repeat: true,
-                fit: BoxFit.contain,
-                options: LottieOptions(enableMergePaths: true),
-                // 任何 JSON 解析异常 / 渲染异常都不要再让整页变红。
-                // 退化成一个柔色的 accent 圆点占位，文字部分仍可读。
-                errorBuilder: (context, error, stack) {
-                  return Center(
-                    child: Container(
-                      width: 140,
-                      height: 140,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: slide.tone.accent.withValues(alpha: 0.18),
-                      ),
-                      child: Center(
-                        child: Container(
-                          width: 60,
-                          height: 60,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: slide.tone.accent.withValues(alpha: 0.42),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
+              child: OnboardingIllustration(
+                kind: slide.kind,
+                accent: slide.tone.accent,
               ),
             ),
           ),
