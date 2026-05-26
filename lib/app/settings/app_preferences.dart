@@ -4,25 +4,49 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'github_mirror.dart';
 import 'schedule_timing_preference.dart';
 
-enum AppThemePreset { ocean, sunrise, forest }
+enum AppThemePreset {
+  ocean,
+  sunrise,
+  forest,
+  blossom,
+  lavender,
+  ink,
+  amber,
+  ruby,
+}
 
 extension AppThemePresetX on AppThemePreset {
   String get label => switch (this) {
     AppThemePreset.ocean => '海盐青',
     AppThemePreset.sunrise => '日出橙',
     AppThemePreset.forest => '松林绿',
+    AppThemePreset.blossom => '樱花粉',
+    AppThemePreset.lavender => '薰衣草',
+    AppThemePreset.ink => '水墨蓝',
+    AppThemePreset.amber => '琥珀',
+    AppThemePreset.ruby => '石榴红',
   };
 
   String get description => switch (this) {
     AppThemePreset.ocean => '清爽、稳定，适合长时间使用',
     AppThemePreset.sunrise => '更有活力，首页层次更明显',
-    AppThemePreset.forest => '更柔和，适合低刺激阅读',
+    AppThemePreset.forest => '柔和低刺激，适合阅读',
+    AppThemePreset.blossom => '温柔，适合喜欢暖色的同学',
+    AppThemePreset.lavender => '安静细腻，UI 整体偏冷',
+    AppThemePreset.ink => '深沉墨蓝，专注向',
+    AppThemePreset.amber => '稳重，复古暖调',
+    AppThemePreset.ruby => '高对比，主色更跳',
   };
 
   Color get seedColor => switch (this) {
     AppThemePreset.ocean => const Color(0xFF0E6A71),
     AppThemePreset.sunrise => const Color(0xFFB96A1F),
     AppThemePreset.forest => const Color(0xFF2E6B4B),
+    AppThemePreset.blossom => const Color(0xFFC85A8C),
+    AppThemePreset.lavender => const Color(0xFF6E62C7),
+    AppThemePreset.ink => const Color(0xFF2A4D7A),
+    AppThemePreset.amber => const Color(0xFFA46A28),
+    AppThemePreset.ruby => const Color(0xFFB42E48),
   };
 }
 
