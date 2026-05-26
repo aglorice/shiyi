@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/di/app_providers.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/result/result.dart';
-import '../../../auth/domain/entities/app_session.dart';
+import '../../../auth/application/retry_with_relogin.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../domain/entities/exam_schedule_snapshot.dart';
 
@@ -57,53 +57,17 @@ class ExamsController extends AsyncNotifier<ExamScheduleSnapshot> {
     }
 
     final effectiveTermId = termId ?? _selectedTermId;
-    var result = await ref.read(fetchExamScheduleUseCaseProvider)(
+    final result = await RetryWithRelogin<ExamScheduleSnapshot>(ref).call(
       session: session,
-      termId: effectiveTermId,
-      forceRefresh: forceRefresh,
+      request: (s) => ref.read(fetchExamScheduleUseCaseProvider)(
+        session: s,
+        termId: effectiveTermId,
+        forceRefresh: forceRefresh || s != session,
+      ),
     );
-    if (result case FailureResult<ExamScheduleSnapshot>(
-      failure: final failure,
-    ) when _shouldRetryWithRelogin(failure)) {
-      final refreshedSession = await _refreshSessionForRetry(failure);
-      if (refreshedSession != null) {
-        result = await ref.read(fetchExamScheduleUseCaseProvider)(
-          session: refreshedSession,
-          termId: effectiveTermId,
-          forceRefresh: true,
-        );
-      }
-    }
 
     final snapshot = result.requireValue();
     _selectedTermId = snapshot.term.id;
     return snapshot;
-  }
-
-  Future<AppSession?> _refreshSessionForRetry(Failure triggerFailure) async {
-    final refreshResult = await ref.read(refreshSessionUseCaseProvider)();
-    if (refreshResult case Success<AppSession>(data: final session)) {
-      ref.read(authControllerProvider.notifier).replaceSession(session);
-      return session;
-    }
-    ref
-        .read(authControllerProvider.notifier)
-        .requireReauth(refreshResult.failureOrNull ?? triggerFailure);
-    return null;
-  }
-
-  bool _shouldRetryWithRelogin(Failure failure) {
-    if (failure is SessionExpiredFailure) {
-      return true;
-    }
-    return _looksLikeSessionExpiredMessage(failure.message);
-  }
-
-  bool _looksLikeSessionExpiredMessage(String message) {
-    return message.contains('尚未登录') ||
-        message.contains('请先登录') ||
-        message.contains('登录失效') ||
-        message.contains('已在别处登录') ||
-        message.contains('被迫退出');
   }
 }
