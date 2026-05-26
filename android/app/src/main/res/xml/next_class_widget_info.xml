@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 小组件元信息：默认 4×2 单元格，30 分钟刷新一次。
-     真正的数据更新由 App 内 home_widget 主动推送，updatePeriodMillis 只是兜底。 -->
+     真正的数据更新由 App 内 home_widget 主动推送，updatePeriodMillis 只是兜底。
+
+     widgetFeatures=reconfigurable+configuration_optional 让 Android 12+ 的
+     Launcher（包括小米/华为）愿意把这个 widget 暴露在 App 长按菜单里。
+     previewImage 用 ic_launcher 兜底，正式版可以替换成专用预览图。 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="220dp"
     android:minHeight="100dp"
@@ -11,4 +15,6 @@
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:previewLayout="@layout/next_class_widget"
+    android:previewImage="@mipmap/ic_launcher"
+    android:widgetFeatures="reconfigurable|configuration_optional"
     android:description="@string/widget_next_class_description" />

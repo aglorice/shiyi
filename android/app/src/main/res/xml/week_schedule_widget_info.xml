@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 整周课表小组件：默认 4×3 单元格。
      PNG 是 Flutter 渲染的，updatePeriodMillis 设大些（30 分钟），
-     真实数据更新由 App 内主动推送。 -->
+     真实数据更新由 App 内主动推送。
+
+     同样加上 widgetFeatures 与 previewImage，让 Android 12+ Launcher 把
+     这个 widget 显示到 App 长按菜单。 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="240dp"
     android:minHeight="180dp"
@@ -12,4 +15,6 @@
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:previewLayout="@layout/week_schedule_widget"
+    android:previewImage="@mipmap/ic_launcher"
+    android:widgetFeatures="reconfigurable|configuration_optional"
     android:description="@string/widget_week_schedule_description" />
