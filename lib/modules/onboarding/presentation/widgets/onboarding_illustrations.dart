@@ -4,11 +4,10 @@ import 'package:flutter/material.dart';
 
 /// 四张引导页的矢量插图。
 ///
-/// 之前手写的 Lottie 在某些 JSON 字段上踩到了 lottie-flutter 的解析坑，
-/// 直接落到 errorBuilder 的兜底圆点上。换成 CustomPainter 后：
-/// - 100% 受控、跨设备一致；
-/// - 每张独立故事、独立色板；
-/// - 可以在外面套 AnimationController 加动效，与正在用的卡片切换过渡协调。
+/// 设计目标：
+/// - 主体大、贴边描边、配 accent 渐变与高光，看起来像精修过的插画而不是矢量草图。
+/// - 每张围绕"一个主物 + 1~2 个副元素 + 背景弧线/星点"组织，避免堆碎屑。
+/// - 动画 6 秒一个循环，幅度尽量小，呼吸感优先。
 enum OnboardingIllustrationKind { welcome, login, privacy, learning }
 
 class OnboardingIllustration extends StatefulWidget {
@@ -32,10 +31,10 @@ class _OnboardingIllustrationState extends State<OnboardingIllustration>
   @override
   void initState() {
     super.initState();
-    // 4s 一个循环，每张插图按 controller.value (0..1) 自己决定怎么动。
-    _controller =
-        AnimationController(vsync: this, duration: const Duration(seconds: 4))
-          ..repeat();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 6),
+    )..repeat();
   }
 
   @override
@@ -76,8 +75,13 @@ class _IllustrationPainter extends CustomPainter {
   final Color accent;
   final double t;
 
+  // 主体描边色：在 accent 上加一层深沉但不死黑的"墨色"，呼应整套 #1B1B1F。
+  static const _ink = Color(0xFF1F2024);
+  static const _paper = Color(0xFFFFFAF5);
+
   @override
   void paint(Canvas canvas, Size size) {
+    _paintBackdrop(canvas, size);
     switch (kind) {
       case OnboardingIllustrationKind.welcome:
         _paintWelcome(canvas, size);
@@ -95,189 +99,354 @@ class _IllustrationPainter extends CustomPainter {
   }
 
   // --------------------------------------------------------
-  // 1) Welcome —— 中央 phone + 漂浮的 4 张服务卡片做"装进口袋"
+  // 共用背景：单层 accent radial glow + 3 颗静态星点。
+  // 不再画太多东西，把视觉分量留给主体。
+  // --------------------------------------------------------
+  void _paintBackdrop(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final c = Offset(w * 0.5, h * 0.52);
+
+    canvas.drawCircle(
+      c,
+      w * 0.46,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            accent.withValues(alpha: 0.36),
+            accent.withValues(alpha: 0.0),
+          ],
+          stops: const [0.0, 1.0],
+        ).createShader(Rect.fromCircle(center: c, radius: w * 0.46)),
+    );
+
+    // 几颗 sparkle 装饰。位置固定，每颗按不同相位呼吸亮度。
+    const sparkles = [
+      Offset(0.18, 0.20),
+      Offset(0.84, 0.16),
+      Offset(0.86, 0.78),
+      Offset(0.14, 0.82),
+    ];
+    for (var i = 0; i < sparkles.length; i++) {
+      final pos = Offset(sparkles[i].dx * w, sparkles[i].dy * h);
+      final blink = (math.sin((t + i * 0.25) * math.pi * 2) + 1) / 2;
+      _drawSparkle(canvas, pos, 5 + blink * 3, accent.withValues(alpha: 0.55));
+    }
+  }
+
+  void _drawSparkle(Canvas canvas, Offset center, double size, Color color) {
+    final p = Paint()
+      ..color = color
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 1.6
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(
+      Offset(center.dx - size, center.dy),
+      Offset(center.dx + size, center.dy),
+      p,
+    );
+    canvas.drawLine(
+      Offset(center.dx, center.dy - size),
+      Offset(center.dx, center.dy + size),
+      p,
+    );
+  }
+
+  // --------------------------------------------------------
+  // 1) Welcome —— phone 主屏 + 4 服务 tile + 上下浮动两枚 chip
   // --------------------------------------------------------
   void _paintWelcome(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
     final c = Offset(w * 0.5, h * 0.5);
 
-    // 背景柔光
-    final glow = RadialGradient(
-      colors: [
-        accent.withValues(alpha: 0.32),
-        accent.withValues(alpha: 0),
-      ],
-    ).createShader(Rect.fromCircle(center: c, radius: w * 0.45));
-    canvas.drawCircle(c, w * 0.45, Paint()..shader = glow);
-
-    // 手机机身
+    // 主体 phone
     final phoneRect = Rect.fromCenter(
-      center: c.translate(0, _bob(0.3) * 4),
-      width: w * 0.34,
-      height: w * 0.54,
+      center: c.translate(0, _bob(0.0) * 3),
+      width: w * 0.44,
+      height: h * 0.62,
     );
-    final phoneRRect = RRect.fromRectAndRadius(phoneRect, Radius.circular(w * 0.06));
-    _drawShadow(canvas, phoneRect.inflate(2));
+    final phoneRRect =
+        RRect.fromRectAndRadius(phoneRect, Radius.circular(w * 0.08));
+
+    _drawSoftShadow(canvas, phoneRect.inflate(2), w * 0.08);
+
+    // 机身：深墨色 + 顶部高光线
+    canvas.drawRRect(phoneRRect, Paint()..color = _ink);
     canvas.drawRRect(
-      phoneRRect,
-      Paint()..color = const Color(0xFF1B1B1F),
+      phoneRRect.deflate(1.2),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = Colors.white.withValues(alpha: 0.10),
     );
-    final screen = phoneRRect.deflate(w * 0.018);
-    canvas.drawRRect(screen, Paint()..color = Colors.white);
 
-    // 状态栏小条
+    // 屏幕：暖白渐变
+    final screenRect = phoneRect.deflate(w * 0.022);
+    final screenRRect =
+        RRect.fromRectAndRadius(screenRect, Radius.circular(w * 0.058));
     canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          screen.left + w * 0.04,
-          screen.top + w * 0.025,
-          w * 0.06,
-          w * 0.012,
-        ),
-        Radius.circular(w * 0.006),
-      ),
-      Paint()..color = const Color(0xFF333333),
+      screenRRect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            _paper,
+            accent.withValues(alpha: 0.06),
+          ],
+        ).createShader(screenRect),
     );
 
-    // 屏幕里的四张服务图标，各自小幅呼吸
-    final serviceColors = const [
-      Color(0xFF5C8DEF), // schedule
-      Color(0xFF4FB07A), // gym
-      Color(0xFFE8A94C), // grades
-      Color(0xFFAA77E0), // notice
-    ];
-    for (var i = 0; i < 4; i++) {
-      final col = i % 2;
-      final row = i ~/ 2;
-      final pop = _pop(0.1 + i * 0.06);
-      final tileSize = screen.width * 0.32;
-      final origin = Offset(
-        screen.left + screen.width * 0.13 + col * (tileSize + screen.width * 0.06),
-        screen.top + screen.height * 0.18 + row * (tileSize + screen.width * 0.04),
-      );
-      final tileRect = Rect.fromLTWH(
-        origin.dx,
-        origin.dy,
-        tileSize,
-        tileSize,
-      );
-      final scaled = Rect.fromCenter(
-        center: tileRect.center,
-        width: tileRect.width * pop,
-        height: tileRect.height * pop,
-      );
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(scaled, Radius.circular(tileSize * 0.24)),
-        Paint()..color = serviceColors[i],
-      );
-      // 图标内的小符号
-      _paintTileGlyph(canvas, scaled, i);
-    }
-
-    // 屏幕底部 home 指示条
+    // 状态栏（dynamic island）
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         Rect.fromCenter(
-          center: Offset(screen.center.dx, screen.bottom - w * 0.022),
-          width: screen.width * 0.4,
+          center: Offset(screenRect.center.dx, screenRect.top + w * 0.034),
+          width: w * 0.10,
+          height: w * 0.022,
+        ),
+        Radius.circular(w * 0.014),
+      ),
+      Paint()..color = _ink,
+    );
+
+    // 顶部欢迎条（账户卡）
+    final welcomeRect = Rect.fromLTWH(
+      screenRect.left + w * 0.024,
+      screenRect.top + w * 0.075,
+      screenRect.width - w * 0.048,
+      h * 0.07,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(welcomeRect, Radius.circular(w * 0.022)),
+      Paint()..color = accent.withValues(alpha: 0.18),
+    );
+    // 头像
+    canvas.drawCircle(
+      Offset(welcomeRect.left + w * 0.04, welcomeRect.center.dy),
+      w * 0.022,
+      Paint()..color = accent,
+    );
+    // 两条文字线
+    for (var i = 0; i < 2; i++) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(
+            welcomeRect.left + w * 0.085,
+            welcomeRect.top + w * 0.022 + i * w * 0.022,
+            welcomeRect.width * (0.62 - i * 0.22),
+            w * 0.012,
+          ),
+          Radius.circular(w * 0.006),
+        ),
+        Paint()..color = accent.withValues(alpha: 0.55 - i * 0.18),
+      );
+    }
+
+    // 4 张服务 tile（2×2）
+    final serviceColors = const [
+      Color(0xFF5C8DEF),
+      Color(0xFF4FB07A),
+      Color(0xFFE8A94C),
+      Color(0xFFAA77E0),
+    ];
+    final tileSize = (welcomeRect.width - w * 0.024) / 2;
+    final tilesTop = welcomeRect.bottom + w * 0.026;
+    for (var i = 0; i < 4; i++) {
+      final col = i % 2;
+      final row = i ~/ 2;
+      final origin = Offset(
+        welcomeRect.left + col * (tileSize + w * 0.024),
+        tilesTop + row * (tileSize + w * 0.024),
+      );
+      final rect = Rect.fromLTWH(origin.dx, origin.dy, tileSize, tileSize);
+      final scale = 1 + _bob(0.15 + i * 0.12) * 0.012;
+      final scaled = Rect.fromCenter(
+        center: rect.center,
+        width: rect.width * scale,
+        height: rect.height * scale,
+      );
+      // tile 渐变：主色 → 主色 90%，加内边亮线
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(scaled, Radius.circular(w * 0.026)),
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              serviceColors[i],
+              Color.lerp(serviceColors[i], _ink, 0.18)!,
+            ],
+          ).createShader(scaled),
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          scaled.deflate(0.8),
+          Radius.circular(w * 0.024),
+        ),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.8
+          ..color = Colors.white.withValues(alpha: 0.25),
+      );
+      _paintTileGlyph(canvas, scaled, i);
+    }
+
+    // home 指示条
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset(screenRect.center.dx, screenRect.bottom - w * 0.024),
+          width: screenRect.width * 0.35,
           height: w * 0.008,
         ),
         Radius.circular(w * 0.004),
       ),
-      Paint()..color = const Color(0xFF999999),
+      Paint()..color = _ink.withValues(alpha: 0.55),
     );
 
-    // 周围漂浮的小元素，呼应"零散的服务"
+    // 上下两枚漂浮 chip：呼吸 + 微旋转
     _drawFloatingChip(
       canvas,
-      Offset(w * 0.16, h * 0.22 + _bob(0.1) * 6),
-      Color(0xFF5C8DEF),
-      angle: -0.2,
+      Offset(w * 0.18, h * 0.30 + _bob(0.0) * 5),
+      const Color(0xFF5C8DEF),
+      glyph: _ChipGlyph.calendar,
+      angle: -0.10 + _bob(0.4) * 0.05,
     );
     _drawFloatingChip(
       canvas,
-      Offset(w * 0.86, h * 0.30 + _bob(0.4) * 6),
-      Color(0xFFE8A94C),
-      angle: 0.18,
-    );
-    _drawFloatingChip(
-      canvas,
-      Offset(w * 0.84, h * 0.78 + _bob(0.2) * 6),
-      Color(0xFF4FB07A),
-      angle: -0.15,
-    );
-    _drawFloatingChip(
-      canvas,
-      Offset(w * 0.14, h * 0.78 + _bob(0.6) * 6),
-      Color(0xFFAA77E0),
-      angle: 0.12,
+      Offset(w * 0.82, h * 0.72 + _bob(0.5) * 5),
+      const Color(0xFFE8A94C),
+      glyph: _ChipGlyph.bell,
+      angle: 0.12 + _bob(0.1) * 0.05,
     );
   }
 
   void _paintTileGlyph(Canvas canvas, Rect rect, int kind) {
     final glyph = Paint()
       ..color = Colors.white
-      ..strokeCap = StrokeCap.round;
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final fill = Paint()..color = Colors.white;
     final c = rect.center;
     final s = rect.width;
     switch (kind) {
-      case 0: // schedule grid
-        for (var i = 0; i < 3; i++) {
-          for (var j = 0; j < 3; j++) {
-            canvas.drawCircle(
-              Offset(
-                c.dx + (j - 1) * s * 0.18,
-                c.dy + (i - 1) * s * 0.18,
-              ),
-              s * 0.04,
-              glyph,
-            );
-          }
-        }
+      case 0: // 日历
+        final body = Rect.fromCenter(center: c, width: s * 0.5, height: s * 0.45);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(body, Radius.circular(s * 0.06)),
+          glyph,
+        );
+        canvas.drawLine(
+          Offset(body.left, body.top + s * 0.13),
+          Offset(body.right, body.top + s * 0.13),
+          glyph,
+        );
+        // 两根 hanger
+        canvas.drawLine(
+          Offset(body.left + s * 0.10, body.top - s * 0.06),
+          Offset(body.left + s * 0.10, body.top + s * 0.04),
+          glyph,
+        );
+        canvas.drawLine(
+          Offset(body.right - s * 0.10, body.top - s * 0.06),
+          Offset(body.right - s * 0.10, body.top + s * 0.04),
+          glyph,
+        );
+        // 小点
+        canvas.drawCircle(
+          Offset(c.dx, c.dy + s * 0.05),
+          s * 0.025,
+          fill,
+        );
         break;
-      case 1: // dumbbell
+      case 1: // 哑铃
         final barY = c.dy;
         canvas.drawRRect(
           RRect.fromRectAndRadius(
             Rect.fromCenter(
               center: Offset(c.dx, barY),
-              width: s * 0.5,
-              height: s * 0.07,
+              width: s * 0.42,
+              height: s * 0.06,
             ),
             Radius.circular(s * 0.02),
           ),
-          glyph,
+          fill,
         );
-        canvas.drawCircle(Offset(c.dx - s * 0.28, barY), s * 0.09, glyph);
-        canvas.drawCircle(Offset(c.dx + s * 0.28, barY), s * 0.09, glyph);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(
+              center: Offset(c.dx - s * 0.24, barY),
+              width: s * 0.10,
+              height: s * 0.20,
+            ),
+            Radius.circular(s * 0.024),
+          ),
+          fill,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(
+              center: Offset(c.dx + s * 0.24, barY),
+              width: s * 0.10,
+              height: s * 0.20,
+            ),
+            Radius.circular(s * 0.024),
+          ),
+          fill,
+        );
         break;
-      case 2: // grades = 'A+'
+      case 2: // A+
         final tp = TextPainter(
           text: TextSpan(
             text: 'A+',
             style: TextStyle(
               color: Colors.white,
-              fontSize: s * 0.45,
-              fontWeight: FontWeight.w800,
+              fontSize: s * 0.42,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.5,
             ),
           ),
           textDirection: TextDirection.ltr,
         )..layout();
         tp.paint(canvas, c - Offset(tp.width / 2, tp.height / 2));
         break;
-      case 3: // bell
+      case 3: // 铃铛
         final bell = Path()
-          ..moveTo(c.dx - s * 0.22, c.dy + s * 0.12)
+          ..moveTo(c.dx - s * 0.18, c.dy + s * 0.10)
           ..quadraticBezierTo(
+            c.dx - s * 0.18,
+            c.dy - s * 0.20,
             c.dx,
-            c.dy - s * 0.32,
-            c.dx + s * 0.22,
-            c.dy + s * 0.12,
+            c.dy - s * 0.22,
+          )
+          ..quadraticBezierTo(
+            c.dx + s * 0.18,
+            c.dy - s * 0.20,
+            c.dx + s * 0.18,
+            c.dy + s * 0.10,
           )
           ..close();
-        canvas.drawPath(bell, glyph);
-        canvas.drawCircle(Offset(c.dx, c.dy + s * 0.22), s * 0.05, glyph);
+        canvas.drawPath(bell, fill);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(
+              center: Offset(c.dx, c.dy + s * 0.13),
+              width: s * 0.42,
+              height: s * 0.05,
+            ),
+            Radius.circular(s * 0.02),
+          ),
+          fill,
+        );
+        canvas.drawCircle(
+          Offset(c.dx, c.dy + s * 0.22),
+          s * 0.04,
+          fill,
+        );
         break;
     }
   }
@@ -286,403 +455,592 @@ class _IllustrationPainter extends CustomPainter {
     Canvas canvas,
     Offset center,
     Color color, {
+    required _ChipGlyph glyph,
     required double angle,
   }) {
     canvas.save();
     canvas.translate(center.dx, center.dy);
     canvas.rotate(angle);
-    canvas.translate(-center.dx, -center.dy);
-    final rect = Rect.fromCenter(
-      center: center,
-      width: 56,
-      height: 56,
-    );
+    final size = 56.0;
+    final rect = Rect.fromCenter(center: Offset.zero, width: size, height: size);
+    // 阴影
     canvas.drawRRect(
-      RRect.fromRectAndRadius(rect, const Radius.circular(14)),
-      Paint()..color = color.withValues(alpha: 0.95),
+      RRect.fromRectAndRadius(rect.translate(0, 4), const Radius.circular(16)),
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.10)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
     );
-    canvas.drawCircle(
-      center,
-      14,
-      Paint()..color = Colors.white.withValues(alpha: 0.85),
+    // 主体渐变
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(16)),
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            color,
+            Color.lerp(color, _ink, 0.20)!,
+          ],
+        ).createShader(rect),
     );
+    // 内描边亮线
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect.deflate(1), const Radius.circular(15)),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = Colors.white.withValues(alpha: 0.30),
+    );
+    // glyph
+    final p = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.4
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final s = size;
+    switch (glyph) {
+      case _ChipGlyph.calendar:
+        final body = Rect.fromCenter(
+          center: Offset.zero,
+          width: s * 0.50,
+          height: s * 0.46,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(body, Radius.circular(s * 0.08)),
+          p,
+        );
+        canvas.drawLine(
+          Offset(body.left, body.top + s * 0.14),
+          Offset(body.right, body.top + s * 0.14),
+          p,
+        );
+        break;
+      case _ChipGlyph.bell:
+        final bell = Path()
+          ..moveTo(-s * 0.18, s * 0.10)
+          ..quadraticBezierTo(-s * 0.18, -s * 0.18, 0, -s * 0.20)
+          ..quadraticBezierTo(s * 0.18, -s * 0.18, s * 0.18, s * 0.10)
+          ..close();
+        canvas.drawPath(bell, p);
+        canvas.drawLine(Offset(-s * 0.20, s * 0.14),
+            Offset(s * 0.20, s * 0.14), p);
+        break;
+    }
     canvas.restore();
   }
 
   // --------------------------------------------------------
-  // 2) Login —— 中央 SSO Key + 4 个服务节点 + 扫描线
+  // 2) Login —— 学生证 + 钥匙 + 完成对勾
   // --------------------------------------------------------
   void _paintLogin(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
-    final c = Offset(w * 0.5, h * 0.5);
-    final r = w * 0.32;
+    final c = Offset(w * 0.5, h * 0.52);
 
-    // 背景柔光
-    canvas.drawCircle(
-      c,
-      r * 1.5,
-      Paint()
-        ..shader = RadialGradient(colors: [
-          accent.withValues(alpha: 0.3),
-          accent.withValues(alpha: 0),
-        ]).createShader(Rect.fromCircle(center: c, radius: r * 1.5)),
+    // 学生证主体（横）
+    final cardRect = Rect.fromCenter(
+      center: c.translate(0, _bob(0.0) * 2),
+      width: w * 0.66,
+      height: h * 0.42,
     );
+    final cardRRect =
+        RRect.fromRectAndRadius(cardRect, Radius.circular(w * 0.05));
+    _drawSoftShadow(canvas, cardRect.inflate(2), w * 0.05);
 
-    // 虚线轨道
-    _drawDashedCircle(
-      canvas,
-      c,
-      r,
+    // 主体白色卡片，左侧 accent 色 strip
+    canvas.drawRRect(cardRRect, Paint()..color = _paper);
+    canvas.drawRRect(
+      cardRRect.deflate(0.6),
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5
-        ..color = accent.withValues(alpha: 0.45),
-      dashLen: 6,
-      gapLen: 8,
+        ..strokeWidth = 1
+        ..color = _ink.withValues(alpha: 0.06),
     );
-
-    // 扫描线
-    final scanAngle = t * math.pi * 2;
+    // 左侧 strip
     canvas.save();
-    canvas.translate(c.dx, c.dy);
-    canvas.rotate(scanAngle);
-    final scanPaint = Paint()
-      ..shader = LinearGradient(
-        colors: [accent.withValues(alpha: 0.0), accent.withValues(alpha: 0.7)],
-      ).createShader(Rect.fromLTWH(0, -2, r, 4));
-    canvas.drawRRect(
-      RRect.fromLTRBR(0, -2.5, r, 2.5, const Radius.circular(2)),
-      scanPaint,
+    canvas.clipRRect(cardRRect);
+    canvas.drawRect(
+      Rect.fromLTWH(cardRect.left, cardRect.top, w * 0.16, cardRect.height),
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [accent, Color.lerp(accent, _ink, 0.30)!],
+        ).createShader(
+          Rect.fromLTWH(cardRect.left, cardRect.top, w * 0.16, cardRect.height),
+        ),
     );
     canvas.restore();
 
-    // 4 个服务节点
-    const nodeAngles = [-math.pi / 2, 0.0, math.pi / 2, math.pi];
-    final nodeColors = [
-      const Color(0xFF5C8DEF),
-      const Color(0xFF4FB07A),
-      const Color(0xFFE8A94C),
-      const Color(0xFFAA77E0),
-    ];
-    for (var i = 0; i < 4; i++) {
-      final angle = nodeAngles[i];
-      final pos = c + Offset(math.cos(angle), math.sin(angle)) * r;
-      final glow = (((t * 4) - i) % 4).clamp(0.0, 1.0);
-      final glowPaint = Paint()..color = nodeColors[i].withValues(alpha: 0.25 * (1 - glow));
-      canvas.drawCircle(pos, 28 + 16 * glow, glowPaint);
+    // strip 上的小 logo（圆角方）
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset(cardRect.left + w * 0.08, cardRect.center.dy),
+          width: w * 0.08,
+          height: w * 0.08,
+        ),
+        Radius.circular(w * 0.018),
+      ),
+      Paint()..color = Colors.white.withValues(alpha: 0.92),
+    );
+    // logo 内一个 SSO 字符
+    final logo = TextPainter(
+      text: TextSpan(
+        text: '邑',
+        style: TextStyle(
+          color: accent,
+          fontSize: w * 0.05,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    logo.paint(
+      canvas,
+      Offset(cardRect.left + w * 0.08, cardRect.center.dy) -
+          Offset(logo.width / 2, logo.height / 2),
+    );
 
-      canvas.drawCircle(pos, 22, Paint()..color = Colors.white);
-      canvas.drawCircle(
-        pos,
-        22,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2
-          ..color = nodeColors[i],
-      );
-      // 节点内部 mini-icon
-      _paintNodeGlyph(canvas, pos, 22, i, nodeColors[i]);
-    }
-
-    // 中心大圆
-    final coreShadow = Paint()
-      ..color = Colors.black.withValues(alpha: 0.12)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
-    canvas.drawCircle(c.translate(0, 4), 38, coreShadow);
-    canvas.drawCircle(c, 38, Paint()..color = const Color(0xFF1B1B1F));
-
-    // 钥匙
-    final keyOffset = c;
-    canvas.drawCircle(
-      keyOffset.translate(-8, 0),
-      11,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 4
-        ..color = const Color(0xFFFFD972),
+    // 右侧文字行
+    final textLeft = cardRect.left + w * 0.20;
+    final textTop = cardRect.top + h * 0.06;
+    // 名字（粗）
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(textLeft, textTop, w * 0.30, h * 0.025),
+        Radius.circular(h * 0.012),
+      ),
+      Paint()..color = _ink.withValues(alpha: 0.78),
+    );
+    // 学号
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(textLeft, textTop + h * 0.05, w * 0.36, h * 0.014),
+        Radius.circular(h * 0.007),
+      ),
+      Paint()..color = _ink.withValues(alpha: 0.30),
     );
     canvas.drawRRect(
-      RRect.fromLTRBR(
-        keyOffset.dx + 0,
-        keyOffset.dy - 3,
-        keyOffset.dx + 18,
-        keyOffset.dy + 3,
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(textLeft, textTop + h * 0.08, w * 0.28, h * 0.014),
+        Radius.circular(h * 0.007),
+      ),
+      Paint()..color = _ink.withValues(alpha: 0.20),
+    );
+    // 条形码
+    final barTop = cardRect.bottom - h * 0.07;
+    for (var i = 0; i < 14; i++) {
+      final wide = i % 3 == 0 ? 1.8 : 1.0;
+      canvas.drawRect(
+        Rect.fromLTWH(
+          textLeft + i * w * 0.018,
+          barTop,
+          wide,
+          h * 0.04,
+        ),
+        Paint()..color = _ink,
+      );
+    }
+
+    // 钥匙：从右上插入卡片，锁孔在卡片右下
+    final keyholeOffset = Offset(cardRect.right - w * 0.07, cardRect.bottom - w * 0.05);
+    canvas.drawCircle(
+      keyholeOffset,
+      w * 0.018,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..color = _ink,
+    );
+    canvas.drawLine(
+      Offset(keyholeOffset.dx, keyholeOffset.dy + w * 0.012),
+      Offset(keyholeOffset.dx, keyholeOffset.dy + w * 0.04),
+      Paint()
+        ..strokeWidth = 2
+        ..strokeCap = StrokeCap.round
+        ..color = _ink,
+    );
+
+    // 钥匙旋转（随 t 摆动 ±20°）
+    final keyAngle = math.sin(t * math.pi * 2) * 0.35;
+    canvas.save();
+    canvas.translate(keyholeOffset.dx, keyholeOffset.dy);
+    canvas.rotate(keyAngle);
+    _drawKey(canvas, w);
+    canvas.restore();
+
+    // 顶部右侧的对勾 badge（弹出感）
+    final badgePop = (math.sin(t * math.pi * 2 - 1.0) * 0.5 + 0.5);
+    final badgeCenter =
+        Offset(cardRect.right - w * 0.04, cardRect.top - w * 0.02);
+    final r = w * 0.05 * (0.85 + badgePop * 0.15);
+    canvas.drawCircle(
+      badgeCenter,
+      r + 4,
+      Paint()
+        ..color = const Color(0xFF4FB07A).withValues(alpha: 0.18 * badgePop),
+    );
+    canvas.drawCircle(
+      badgeCenter,
+      r,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: const [Color(0xFF6CC68F), Color(0xFF4FB07A)],
+        ).createShader(Rect.fromCircle(center: badgeCenter, radius: r)),
+    );
+    final tick = Path()
+      ..moveTo(badgeCenter.dx - r * 0.40, badgeCenter.dy + r * 0.02)
+      ..lineTo(badgeCenter.dx - r * 0.08, badgeCenter.dy + r * 0.32)
+      ..lineTo(badgeCenter.dx + r * 0.42, badgeCenter.dy - r * 0.30);
+    canvas.drawPath(
+      tick,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+
+    // 底部一根光束，呼应 "登一次处处都通"
+    final beam = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          accent.withValues(alpha: 0.0),
+          accent.withValues(alpha: 0.45),
+          accent.withValues(alpha: 0.0),
+        ],
+      ).createShader(Rect.fromLTWH(0, 0, w, 6));
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset(c.dx, cardRect.bottom + w * 0.08),
+          width: w * 0.6,
+          height: 4,
+        ),
         const Radius.circular(2),
       ),
-      Paint()..color = const Color(0xFFFFD972),
-    );
-    canvas.drawRect(
-      Rect.fromLTWH(
-        keyOffset.dx + 14,
-        keyOffset.dy + 3,
-        4,
-        6,
-      ),
-      Paint()..color = const Color(0xFFFFD972),
+      beam,
     );
   }
 
-  void _paintNodeGlyph(
-    Canvas canvas,
-    Offset center,
-    double size,
-    int index,
-    Color color,
-  ) {
-    final p = Paint()..color = color;
-    switch (index) {
-      case 0: // calendar
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromCenter(center: center, width: 16, height: 12),
-            const Radius.circular(2),
-          ),
-          p,
-        );
-        canvas.drawRect(
-          Rect.fromCenter(
-            center: center.translate(0, -7),
-            width: 16,
-            height: 4,
-          ),
-          p,
-        );
-        break;
-      case 1: // user
-        canvas.drawCircle(center.translate(0, -3), 4, p);
-        canvas.drawArc(
-          Rect.fromCenter(
-            center: center.translate(0, 5),
-            width: 14,
-            height: 10,
-          ),
-          math.pi,
-          math.pi,
-          true,
-          p,
-        );
-        break;
-      case 2: // shape "doc"
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromCenter(center: center, width: 12, height: 16),
-            const Radius.circular(2),
-          ),
-          p,
-        );
-        for (var i = 0; i < 3; i++) {
-          canvas.drawRect(
-            Rect.fromCenter(
-              center: Offset(center.dx, center.dy - 3 + i * 3),
-              width: 8,
-              height: 1.4,
-            ),
-            Paint()..color = Colors.white.withValues(alpha: 0.7),
-          );
-        }
-        break;
-      case 3: // bell mini
-        final path = Path()
-          ..moveTo(center.dx - 7, center.dy + 4)
-          ..quadraticBezierTo(center.dx, center.dy - 9, center.dx + 7, center.dy + 4)
-          ..close();
-        canvas.drawPath(path, p);
-        canvas.drawCircle(Offset(center.dx, center.dy + 8), 1.8, p);
-        break;
-    }
+  void _drawKey(Canvas canvas, double w) {
+    // 钥匙以原点的小锁孔为参考；钥匙整体水平向右伸。
+    // 钥匙长度 ~ w*0.22
+    final keyColor = const Color(0xFFF5C45B);
+    final keyDeep = Color.lerp(keyColor, _ink, 0.30)!;
+
+    // 钥匙杆
+    final shaft = Rect.fromLTWH(0, -w * 0.012, w * 0.16, w * 0.024);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(shaft, Radius.circular(w * 0.012)),
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [keyColor, keyDeep],
+        ).createShader(shaft),
+    );
+    // 齿
+    canvas.drawRect(
+      Rect.fromLTWH(w * 0.10, w * 0.012, w * 0.018, w * 0.024),
+      Paint()..color = keyDeep,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(w * 0.13, w * 0.012, w * 0.012, w * 0.018),
+      Paint()..color = keyDeep,
+    );
+    // 钥匙环
+    canvas.drawCircle(
+      Offset(w * 0.18, 0),
+      w * 0.038,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = w * 0.018
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [keyColor, keyDeep],
+        ).createShader(
+          Rect.fromCircle(center: Offset(w * 0.18, 0), radius: w * 0.038),
+        ),
+    );
+    // 钥匙环高光
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(w * 0.18, 0), radius: w * 0.030),
+      -math.pi * 0.85,
+      math.pi * 0.5,
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6
+        ..color = Colors.white.withValues(alpha: 0.55),
+    );
   }
 
   // --------------------------------------------------------
-  // 3) Privacy —— 盾内嵌 phone，外有阻挡
+  // 3) Privacy —— 真盾 + 中央锁 + 两枚保险插销
   // --------------------------------------------------------
   void _paintPrivacy(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
     final c = Offset(w * 0.5, h * 0.5);
 
-    // 背景柔光
-    canvas.drawCircle(
-      c,
-      w * 0.42,
+    // 盾形主体（用真正的盾轮廓：肩部扁平、底部尖收）
+    final shieldHalfW = w * 0.30;
+    final shieldH = h * 0.62;
+    final shieldPath = _shieldPath(c.translate(0, _bob(0.0) * 2),
+        shieldHalfW, shieldH * 0.5);
+
+    _drawSoftShadow(canvas, shieldPath.getBounds().inflate(4), w * 0.06);
+
+    // 盾内渐变填色
+    canvas.drawPath(
+      shieldPath,
       Paint()
-        ..shader = RadialGradient(colors: [
-          accent.withValues(alpha: 0.28),
-          accent.withValues(alpha: 0),
-        ]).createShader(Rect.fromCircle(center: c, radius: w * 0.42)),
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color.lerp(accent, Colors.white, 0.10)!,
+            Color.lerp(accent, _ink, 0.22)!,
+          ],
+        ).createShader(shieldPath.getBounds()),
     );
 
-    // ripple 三圈
-    for (var i = 0; i < 3; i++) {
-      final phase = (t + i * 0.33) % 1.0;
-      final r = w * 0.18 + phase * w * 0.22;
-      final opacity = (1 - phase) * 0.55;
-      canvas.drawCircle(
-        c,
-        r,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2
-          ..color = accent.withValues(alpha: opacity),
-      );
-    }
-
-    // 盾外形
-    final shieldPath = _shieldPath(c, w * 0.30, h * 0.40);
-    final shieldFill = Paint()..color = accent;
-    _drawShadow(canvas, shieldPath.getBounds().inflate(4));
-    canvas.drawPath(shieldPath, shieldFill);
-
-    final innerShield = _shieldPath(c, w * 0.24, h * 0.32);
+    // 内圈描边（金属纹）
+    final innerShield =
+        _shieldPath(c.translate(0, _bob(0.0) * 2), shieldHalfW * 0.86,
+            shieldH * 0.43);
     canvas.drawPath(
       innerShield,
-      Paint()..color = const Color(0xFFF5FBF6),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5
+        ..color = Colors.white.withValues(alpha: 0.45),
     );
 
-    // 盾内 phone
-    final phoneRect = Rect.fromCenter(
-      center: c,
-      width: w * 0.22,
-      height: w * 0.32,
+    // 顶部小高光
+    final highlightPath = Path()
+      ..moveTo(c.dx - shieldHalfW * 0.62, c.dy - shieldH * 0.40)
+      ..quadraticBezierTo(
+        c.dx,
+        c.dy - shieldH * 0.50,
+        c.dx + shieldHalfW * 0.62,
+        c.dy - shieldH * 0.40,
+      );
+    canvas.drawPath(
+      highlightPath,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..strokeCap = StrokeCap.round
+        ..color = Colors.white.withValues(alpha: 0.50),
+    );
+
+    // 中央锁
+    final lockCenter = c.translate(0, _bob(0.0) * 2 + h * 0.02);
+    final bodyRect = Rect.fromCenter(
+      center: lockCenter.translate(0, h * 0.04),
+      width: w * 0.20,
+      height: h * 0.16,
+    );
+    // 锁体阴影
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        bodyRect.translate(0, 4),
+        Radius.circular(w * 0.024),
+      ),
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.18)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+    );
+    // 锁体
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(bodyRect, Radius.circular(w * 0.024)),
+      Paint()..color = _paper,
     );
     canvas.drawRRect(
-      RRect.fromRectAndRadius(phoneRect, Radius.circular(w * 0.04)),
-      Paint()..color = const Color(0xFF1B1B1F),
+      RRect.fromRectAndRadius(
+        bodyRect.deflate(1),
+        Radius.circular(w * 0.022),
+      ),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2
+        ..color = _ink.withValues(alpha: 0.10),
     );
-    final screen = RRect.fromRectAndRadius(
-      phoneRect.deflate(w * 0.012),
-      Radius.circular(w * 0.025),
+    // 锁孔（圆 + 倒三角）
+    final keyholeC = bodyRect.center.translate(0, -h * 0.005);
+    canvas.drawCircle(keyholeC, w * 0.018, Paint()..color = _ink);
+    canvas.drawPath(
+      Path()
+        ..moveTo(keyholeC.dx - w * 0.012, keyholeC.dy + w * 0.004)
+        ..lineTo(keyholeC.dx + w * 0.012, keyholeC.dy + w * 0.004)
+        ..lineTo(keyholeC.dx, keyholeC.dy + w * 0.045)
+        ..close(),
+      Paint()..color = _ink,
     );
-    canvas.drawRRect(screen, Paint()..color = accent);
 
-    // phone 内文字条 + 头像
-    canvas.drawCircle(
-      Offset(screen.center.dx - w * 0.04, screen.center.dy - w * 0.05),
-      w * 0.022,
-      Paint()..color = Colors.white,
+    // 锁环
+    final shackleRect = Rect.fromCenter(
+      center: bodyRect.topCenter.translate(0, -w * 0.018),
+      width: bodyRect.width * 0.66,
+      height: w * 0.10,
     );
-    for (var i = 0; i < 4; i++) {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            screen.left + w * 0.022,
-            screen.center.dy - w * 0.005 + i * w * 0.026,
-            w * 0.18 - i * w * 0.025,
-            w * 0.012,
-          ),
-          Radius.circular(w * 0.004),
-        ),
-        Paint()..color = Colors.white.withValues(alpha: 0.7 - i * 0.12),
+    canvas.drawArc(
+      shackleRect,
+      math.pi,
+      math.pi,
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = w * 0.020
+        ..strokeCap = StrokeCap.round
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.white.withValues(alpha: 0.95), _paper],
+        ).createShader(shackleRect),
+    );
+
+    // 盾两侧的"保险插销"装饰：左右各一根带圆头的小杆
+    for (var side = -1; side <= 1; side += 2) {
+      final orbit = _bob(side > 0 ? 0.3 : 0.7) * 3;
+      final base = Offset(
+        c.dx + side * shieldHalfW * 1.10,
+        c.dy + orbit,
       );
-    }
-
-    // 阻挡：四个角的红色 ✕
-    final crossPositions = [
-      Offset(w * 0.18, h * 0.18),
-      Offset(w * 0.82, h * 0.20),
-      Offset(w * 0.84, h * 0.82),
-      Offset(w * 0.16, h * 0.80),
-    ];
-    for (var i = 0; i < 4; i++) {
-      final pulse = (((t * 2) - i * 0.25) % 2).toDouble();
-      final double visible =
-          pulse < 0.4 ? pulse / 0.4 : (pulse < 0.6 ? 1.0 : 0.0);
-      if (visible <= 0) continue;
-      _drawCross(
-        canvas,
-        crossPositions[i],
-        12 * visible,
+      final inner = Offset(
+        c.dx + side * shieldHalfW * 0.78,
+        c.dy + orbit,
+      );
+      canvas.drawLine(
+        base,
+        inner,
         Paint()
-          ..color = const Color(0xFFE86969).withValues(alpha: 0.85 * visible)
-          ..strokeWidth = 4 * visible
-          ..strokeCap = StrokeCap.round,
+          ..strokeWidth = 3
+          ..strokeCap = StrokeCap.round
+          ..color = accent.withValues(alpha: 0.55),
+      );
+      canvas.drawCircle(
+        base,
+        5.5,
+        Paint()..color = accent.withValues(alpha: 0.85),
+      );
+      canvas.drawCircle(
+        base,
+        2.4,
+        Paint()..color = Colors.white.withValues(alpha: 0.95),
       );
     }
 
-    // 中央底部锁芯（蜜蜂 / 锁的小细节）
+    // 底部的"对勾"小章
+    final stamp = Offset(c.dx, c.dy + shieldH * 0.40);
     canvas.drawCircle(
-      Offset(c.dx, c.dy + w * 0.12),
-      w * 0.018,
-      Paint()..color = Colors.white,
+      stamp,
+      w * 0.028,
+      Paint()..color = Colors.white.withValues(alpha: 0.18),
+    );
+    final stampTick = Path()
+      ..moveTo(stamp.dx - w * 0.014, stamp.dy + w * 0.001)
+      ..lineTo(stamp.dx - w * 0.003, stamp.dy + w * 0.012)
+      ..lineTo(stamp.dx + w * 0.016, stamp.dy - w * 0.012);
+    canvas.drawPath(
+      stampTick,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
     );
   }
 
   Path _shieldPath(Offset center, double halfWidth, double halfHeight) {
+    // 真正的盾形：肩部宽，向中段微收，底部一个柔和的尖。
     final p = Path();
-    p.moveTo(center.dx, center.dy - halfHeight);
+    final top = center.dy - halfHeight;
+    final bottom = center.dy + halfHeight * 1.05;
+    p.moveTo(center.dx, top);
+    // 右肩
     p.cubicTo(
-      center.dx + halfWidth * 0.7, center.dy - halfHeight,
-      center.dx + halfWidth, center.dy - halfHeight * 0.8,
-      center.dx + halfWidth, center.dy - halfHeight * 0.3,
+      center.dx + halfWidth * 0.55, top,
+      center.dx + halfWidth, top + halfHeight * 0.10,
+      center.dx + halfWidth, top + halfHeight * 0.30,
     );
+    // 右侧缓收
     p.cubicTo(
-      center.dx + halfWidth, center.dy + halfHeight * 0.5,
-      center.dx + halfWidth * 0.6, center.dy + halfHeight * 0.92,
-      center.dx, center.dy + halfHeight,
+      center.dx + halfWidth, center.dy + halfHeight * 0.55,
+      center.dx + halfWidth * 0.85, bottom - halfHeight * 0.20,
+      center.dx + halfWidth * 0.30, bottom - halfHeight * 0.05,
     );
-    p.cubicTo(
-      center.dx - halfWidth * 0.6, center.dy + halfHeight * 0.92,
-      center.dx - halfWidth, center.dy + halfHeight * 0.5,
-      center.dx - halfWidth, center.dy - halfHeight * 0.3,
+    // 底尖
+    p.quadraticBezierTo(
+      center.dx, bottom + halfHeight * 0.05,
+      center.dx - halfWidth * 0.30, bottom - halfHeight * 0.05,
     );
+    // 左侧缓收
     p.cubicTo(
-      center.dx - halfWidth, center.dy - halfHeight * 0.8,
-      center.dx - halfWidth * 0.7, center.dy - halfHeight,
-      center.dx, center.dy - halfHeight,
+      center.dx - halfWidth * 0.85, bottom - halfHeight * 0.20,
+      center.dx - halfWidth, center.dy + halfHeight * 0.55,
+      center.dx - halfWidth, top + halfHeight * 0.30,
+    );
+    // 左肩
+    p.cubicTo(
+      center.dx - halfWidth, top + halfHeight * 0.10,
+      center.dx - halfWidth * 0.55, top,
+      center.dx, top,
     );
     p.close();
     return p;
   }
 
-  void _drawCross(Canvas canvas, Offset center, double size, Paint paint) {
-    paint.style = PaintingStyle.stroke;
-    canvas.drawLine(
-      Offset(center.dx - size, center.dy - size),
-      Offset(center.dx + size, center.dy + size),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(center.dx + size, center.dy - size),
-      Offset(center.dx - size, center.dy + size),
-      paint,
-    );
-  }
-
   // --------------------------------------------------------
-  // 4) Learning —— 翻开的书 + 学士帽 + 漂浮代码
+  // 4) Learning —— 翻开的书 + 学士帽 + 一个像素猫 + 漂浮代码
   // --------------------------------------------------------
   void _paintLearning(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
     final c = Offset(w * 0.5, h * 0.5);
 
-    // 背景柔光
-    canvas.drawCircle(
-      c,
-      w * 0.45,
-      Paint()
-        ..shader = RadialGradient(colors: [
-          accent.withValues(alpha: 0.30),
-          accent.withValues(alpha: 0),
-        ]).createShader(Rect.fromCircle(center: c, radius: w * 0.45)),
+    // 翻开的书
+    final bookCenter = Offset(c.dx, c.dy + h * 0.18 + _bob(0.0) * 2);
+    final bookHalfW = w * 0.34;
+    final bookH = h * 0.30;
+
+    // 阴影
+    _drawSoftShadow(
+      canvas,
+      Rect.fromCenter(
+        center: bookCenter,
+        width: bookHalfW * 2.1,
+        height: bookH * 1.05,
+      ),
+      w * 0.04,
     );
 
-    // 翻开的书
-    final bookCenter = Offset(c.dx, c.dy + h * 0.12 + _bob(0.5) * 3);
-    final bookHalfW = w * 0.30;
-    final bookH = h * 0.28;
-
-    // 书脊（最深底）
+    // 书脊（最深底色）+ 内侧暗影
+    final spineRect = Rect.fromCenter(
+      center: bookCenter,
+      width: bookHalfW * 2.05,
+      height: bookH * 1.05,
+    );
     canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: bookCenter,
-          width: bookHalfW * 2,
-          height: bookH * 1.05,
-        ),
-        Radius.circular(w * 0.025),
-      ),
-      Paint()..color = const Color(0xFF8C3A4F),
+      RRect.fromRectAndRadius(spineRect, Radius.circular(w * 0.024)),
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color.lerp(accent, _ink, 0.45)!,
+            Color.lerp(accent, _ink, 0.15)!,
+          ],
+        ).createShader(spineRect),
     );
 
     // 左右两页
@@ -690,193 +1048,263 @@ class _IllustrationPainter extends CustomPainter {
       final pageRect = Rect.fromCenter(
         center: Offset(bookCenter.dx + side * bookHalfW * 0.51, bookCenter.dy),
         width: bookHalfW * 0.97,
-        height: bookH * 0.95,
+        height: bookH * 0.94,
       );
+      // 翻页阴影：靠近书脊一侧颜色更深
       canvas.drawRRect(
-        RRect.fromRectAndRadius(pageRect, const Radius.circular(8)),
-        Paint()..color = const Color(0xFFFFFAF1),
+        RRect.fromRectAndRadius(pageRect, Radius.circular(w * 0.014)),
+        Paint()
+          ..shader = LinearGradient(
+            begin: side > 0 ? Alignment.centerLeft : Alignment.centerRight,
+            end: side > 0 ? Alignment.centerRight : Alignment.centerLeft,
+            colors: [
+              const Color(0xFFEFE8DA),
+              _paper,
+            ],
+            stops: const [0.0, 0.35],
+          ).createShader(pageRect),
       );
-      // 标题条
+      // 标题条 (accent)
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromLTWH(
-            pageRect.left + 14,
-            pageRect.top + 14,
-            pageRect.width * 0.5,
-            5,
+            pageRect.left + w * 0.03,
+            pageRect.top + w * 0.025,
+            pageRect.width * 0.45,
+            w * 0.013,
           ),
-          const Radius.circular(2),
+          Radius.circular(w * 0.008),
         ),
-        Paint()..color = const Color(0xFFC97A8C),
+        Paint()..color = accent,
       );
       // 文字行
-      for (var i = 0; i < 6; i++) {
+      for (var i = 0; i < 5; i++) {
         canvas.drawRRect(
           RRect.fromRectAndRadius(
             Rect.fromLTWH(
-              pageRect.left + 14,
-              pageRect.top + 30 + i * 12,
-              pageRect.width * (0.78 - (i % 3) * 0.07),
-              3,
+              pageRect.left + w * 0.03,
+              pageRect.top + w * 0.06 + i * w * 0.022,
+              pageRect.width * (0.78 - (i % 3) * 0.10),
+              w * 0.008,
             ),
-            const Radius.circular(1.5),
+            Radius.circular(w * 0.004),
           ),
-          Paint()..color = const Color(0xFFD8AFB7),
+          Paint()..color = _ink.withValues(alpha: 0.20 - (i % 3) * 0.02),
         );
       }
     }
-
-    // 书脊中间分隔线
+    // 中央分隔线
     canvas.drawLine(
-      Offset(bookCenter.dx, bookCenter.dy - bookH * 0.45),
-      Offset(bookCenter.dx, bookCenter.dy + bookH * 0.45),
+      Offset(bookCenter.dx, bookCenter.dy - bookH * 0.42),
+      Offset(bookCenter.dx, bookCenter.dy + bookH * 0.42),
       Paint()
-        ..color = const Color(0xFF8C3A4F).withValues(alpha: 0.5)
-        ..strokeWidth = 1.5,
+        ..color = Color.lerp(accent, _ink, 0.55)!.withValues(alpha: 0.55)
+        ..strokeWidth = 1.4,
     );
 
-    // 学士帽
-    final capCenter = Offset(c.dx, c.dy - h * 0.05 + _bob(0.2) * 4);
-    final capPath = Path()
-      ..moveTo(capCenter.dx - w * 0.16, capCenter.dy)
-      ..lineTo(capCenter.dx, capCenter.dy - w * 0.10)
-      ..lineTo(capCenter.dx + w * 0.16, capCenter.dy)
-      ..lineTo(capCenter.dx, capCenter.dy + w * 0.04)
-      ..close();
-    canvas.drawPath(capPath, Paint()..color = const Color(0xFF1B1B1F));
-    // 帽座
-    final basePath = Path()
-      ..moveTo(capCenter.dx - w * 0.10, capCenter.dy + w * 0.025)
-      ..lineTo(capCenter.dx - w * 0.10, capCenter.dy + w * 0.06)
-      ..quadraticBezierTo(
-        capCenter.dx,
-        capCenter.dy + w * 0.10,
-        capCenter.dx + w * 0.10,
-        capCenter.dy + w * 0.06,
-      )
-      ..lineTo(capCenter.dx + w * 0.10, capCenter.dy + w * 0.025)
-      ..close();
-    canvas.drawPath(basePath, Paint()..color = const Color(0xFF24242A));
+    // 学士帽（书的上方）
+    final capCenter = Offset(c.dx, c.dy - h * 0.04 + _bob(0.2) * 3);
+    _drawCap(canvas, capCenter, w);
 
-    // 帽穗（钟摆）
-    final tasselTop = Offset(capCenter.dx + w * 0.10, capCenter.dy);
-    final tasselAngle = math.sin(t * math.pi * 2) * 0.4;
-    final tasselEnd = tasselTop.translate(
-      math.sin(tasselAngle) * w * 0.05,
-      math.cos(tasselAngle) * w * 0.08,
+    // 帽穗动画：跟着 t 摆
+    final tasselRoot = Offset(capCenter.dx + w * 0.10, capCenter.dy);
+    final swing = math.sin(t * math.pi * 2) * 0.45;
+    final tEnd = tasselRoot.translate(
+      math.sin(swing) * w * 0.05,
+      math.cos(swing) * w * 0.10,
     );
     canvas.drawLine(
-      tasselTop,
-      tasselEnd,
+      tasselRoot,
+      tEnd,
       Paint()
         ..color = const Color(0xFFE8A94C)
         ..strokeWidth = 2.4
         ..strokeCap = StrokeCap.round,
     );
-    canvas.drawCircle(tasselEnd, w * 0.02, Paint()..color = const Color(0xFFE8A94C));
-
-    // 漂浮代码符号
-    _drawCodeTag(
-      canvas,
-      Offset(w * 0.18, h * 0.22 + _bob(0.0) * 6),
-      const Color(0xFF5C8DEF),
-      isOpen: true,
-    );
-    _drawSlash(
-      canvas,
-      Offset(w * 0.5, h * 0.16 + _bob(0.3) * 6),
-      const Color(0xFFE8A94C),
-    );
-    _drawCodeTag(
-      canvas,
-      Offset(w * 0.84, h * 0.24 + _bob(0.6) * 6),
-      const Color(0xFFAA77E0),
-      isOpen: false,
-    );
-  }
-
-  void _drawCodeTag(Canvas canvas, Offset center, Color color,
-      {required bool isOpen}) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 4
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    final p = Path();
-    final s = 12.0;
-    if (isOpen) {
-      p.moveTo(center.dx + s, center.dy - s);
-      p.lineTo(center.dx - s, center.dy);
-      p.lineTo(center.dx + s, center.dy + s);
-    } else {
-      p.moveTo(center.dx - s, center.dy - s);
-      p.lineTo(center.dx + s, center.dy);
-      p.lineTo(center.dx - s, center.dy + s);
-    }
-    canvas.drawPath(p, paint);
-  }
-
-  void _drawSlash(Canvas canvas, Offset center, Color color) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 4
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(
-      Offset(center.dx - 6, center.dy + 12),
-      Offset(center.dx + 6, center.dy - 12),
-      paint,
-    );
-  }
-
-  // --------------------------------------------------------
-  // 共用工具
-  // --------------------------------------------------------
-
-  /// 一个 0..1 → -1..1 的连续呼吸函数。phase 用来让多个元素错峰。
-  double _bob(double phase) => math.sin((t + phase) * math.pi * 2);
-
-  /// 0..1 → 0.92..1.06 的脉冲，用来给"卡片冒出来"的弹性效果。
-  double _pop(double phase) {
-    final v = math.sin((t + phase) * math.pi * 2);
-    return 1.0 + v * 0.05;
-  }
-
-  void _drawShadow(Canvas canvas, Rect rect) {
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(rect.translate(0, 6), const Radius.circular(20)),
-      Paint()
-        ..color = Colors.black.withValues(alpha: 0.10)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
-    );
-  }
-
-  /// 沿圆周画虚线。
-  void _drawDashedCircle(
-    Canvas canvas,
-    Offset center,
-    double radius,
-    Paint paint, {
-    required double dashLen,
-    required double gapLen,
-  }) {
-    final circumference = 2 * math.pi * radius;
-    final dashCount = (circumference / (dashLen + gapLen)).floor();
-    final anglePerDash = (math.pi * 2) / dashCount;
-    for (var i = 0; i < dashCount; i++) {
-      final start = i * anglePerDash;
-      final sweep = anglePerDash * (dashLen / (dashLen + gapLen));
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: radius),
-        start,
-        sweep,
-        false,
-        paint,
+    // 流苏
+    for (var i = 0; i < 5; i++) {
+      final off = Offset(
+        tEnd.dx + (i - 2) * 1.2,
+        tEnd.dy + 4 + i % 2 * 2,
+      );
+      canvas.drawLine(
+        tEnd,
+        off,
+        Paint()
+          ..color = const Color(0xFFE8A94C)
+          ..strokeWidth = 1.6
+          ..strokeCap = StrokeCap.round,
       );
     }
+    canvas.drawCircle(
+      tEnd,
+      w * 0.014,
+      Paint()..color = const Color(0xFFE8A94C),
+    );
+
+    // 左上角：像素猫小图（呼应品牌 logo）
+    _drawPixelCat(canvas, Offset(w * 0.20, h * 0.22 + _bob(0.4) * 3), w * 0.10);
+
+    // 右上角：代码符号 </>
+    _drawCodeBracket(
+      canvas,
+      Offset(w * 0.82, h * 0.22 + _bob(0.6) * 3),
+      const Color(0xFF5C8DEF),
+      w * 0.06,
+    );
+  }
+
+  void _drawCap(Canvas canvas, Offset center, double w) {
+    // 帽顶（菱形板）
+    final top = Path()
+      ..moveTo(center.dx, center.dy - w * 0.10)
+      ..lineTo(center.dx + w * 0.18, center.dy)
+      ..lineTo(center.dx, center.dy + w * 0.06)
+      ..lineTo(center.dx - w * 0.18, center.dy)
+      ..close();
+    canvas.drawPath(
+      top,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [_ink, const Color(0xFF34343A)],
+        ).createShader(top.getBounds()),
+    );
+    // 顶板高光线
+    canvas.drawLine(
+      Offset(center.dx - w * 0.12, center.dy - w * 0.012),
+      Offset(center.dx, center.dy - w * 0.07),
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.20)
+        ..strokeWidth = 1.4,
+    );
+    // 帽座
+    final base = Path()
+      ..moveTo(center.dx - w * 0.10, center.dy + w * 0.02)
+      ..lineTo(center.dx - w * 0.10, center.dy + w * 0.06)
+      ..quadraticBezierTo(
+        center.dx,
+        center.dy + w * 0.10,
+        center.dx + w * 0.10,
+        center.dy + w * 0.06,
+      )
+      ..lineTo(center.dx + w * 0.10, center.dy + w * 0.02)
+      ..close();
+    canvas.drawPath(base, Paint()..color = const Color(0xFF24242A));
+    // 中央纽扣
+    canvas.drawCircle(
+      center,
+      w * 0.012,
+      Paint()..color = const Color(0xFFE8A94C),
+    );
+  }
+
+  void _drawPixelCat(Canvas canvas, Offset center, double size) {
+    // 极简的像素猫头：圆角矩形脸 + 两个三角耳 + 两眼一鼻
+    final faceRect = Rect.fromCenter(
+      center: center,
+      width: size * 1.0,
+      height: size * 0.95,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(faceRect, Radius.circular(size * 0.30)),
+      Paint()..color = _paper,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(faceRect, Radius.circular(size * 0.30)),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6
+        ..color = _ink,
+    );
+    // 耳朵
+    final earL = Path()
+      ..moveTo(faceRect.left + size * 0.05, faceRect.top + size * 0.04)
+      ..lineTo(faceRect.left + size * 0.20, faceRect.top - size * 0.18)
+      ..lineTo(faceRect.left + size * 0.34, faceRect.top + size * 0.10)
+      ..close();
+    final earR = Path()
+      ..moveTo(faceRect.right - size * 0.05, faceRect.top + size * 0.04)
+      ..lineTo(faceRect.right - size * 0.20, faceRect.top - size * 0.18)
+      ..lineTo(faceRect.right - size * 0.34, faceRect.top + size * 0.10)
+      ..close();
+    canvas.drawPath(earL, Paint()..color = _paper);
+    canvas.drawPath(earR, Paint()..color = _paper);
+    canvas.drawPath(
+      earL,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6
+        ..color = _ink,
+    );
+    canvas.drawPath(
+      earR,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6
+        ..color = _ink,
+    );
+    // 眼
+    canvas.drawCircle(
+      Offset(faceRect.center.dx - size * 0.18, faceRect.center.dy - size * 0.04),
+      size * 0.06,
+      Paint()..color = _ink,
+    );
+    canvas.drawCircle(
+      Offset(faceRect.center.dx + size * 0.18, faceRect.center.dy - size * 0.04),
+      size * 0.06,
+      Paint()..color = _ink,
+    );
+    // 鼻子
+    final nose = Path()
+      ..moveTo(faceRect.center.dx - size * 0.05, faceRect.center.dy + size * 0.10)
+      ..lineTo(faceRect.center.dx + size * 0.05, faceRect.center.dy + size * 0.10)
+      ..lineTo(faceRect.center.dx, faceRect.center.dy + size * 0.18)
+      ..close();
+    canvas.drawPath(nose, Paint()..color = accent);
+  }
+
+  void _drawCodeBracket(Canvas canvas, Offset center, Color color, double size) {
+    final p = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final s = size;
+    final path = Path()
+      // <
+      ..moveTo(center.dx - s * 0.55, center.dy - s * 0.55)
+      ..lineTo(center.dx - s * 1.05, center.dy)
+      ..lineTo(center.dx - s * 0.55, center.dy + s * 0.55)
+      // /
+      ..moveTo(center.dx - s * 0.20, center.dy + s * 0.55)
+      ..lineTo(center.dx + s * 0.20, center.dy - s * 0.55)
+      // >
+      ..moveTo(center.dx + s * 0.55, center.dy - s * 0.55)
+      ..lineTo(center.dx + s * 1.05, center.dy)
+      ..lineTo(center.dx + s * 0.55, center.dy + s * 0.55);
+    canvas.drawPath(path, p);
+  }
+
+  // --------------------------------------------------------
+  // 工具
+  // --------------------------------------------------------
+  double _bob(double phase) => math.sin((t + phase) * math.pi * 2);
+
+  void _drawSoftShadow(Canvas canvas, Rect rect, double radius) {
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect.translate(0, 8), Radius.circular(radius)),
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.12)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14),
+    );
   }
 
   @override
   bool shouldRepaint(covariant _IllustrationPainter old) =>
       old.t != t || old.kind != kind || old.accent != accent;
 }
+
+enum _ChipGlyph { calendar, bell }
