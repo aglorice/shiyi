@@ -39,8 +39,10 @@ class HomeWidgetService {
   // 没有任何课程数据时把 hasData 置 false，原生侧切空态。
   static const _kWeekHasData = 'week_schedule.hasData';
 
-  static const _nextClassProvider = 'NextClassWidgetProvider';
-  static const _weekScheduleProvider = 'WeekScheduleWidgetProvider';
+  static const _nextClassProvider =
+      'com.uniyi.uni_yi.widget.NextClassWidgetProvider';
+  static const _weekScheduleProvider =
+      'com.uniyi.uni_yi.widget.WeekScheduleWidgetProvider';
   static const _iosNextClassWidgetName = 'NextClassWidget';
   static const _iosWeekScheduleWidgetName = 'WeekScheduleWidget';
 
@@ -82,7 +84,7 @@ class HomeWidgetService {
         await HomeWidget.saveWidgetData(_kTeacher, next.teacher);
       }
       await HomeWidget.updateWidget(
-        androidName: _nextClassProvider,
+        qualifiedAndroidName: _nextClassProvider,
         iOSName: _iosNextClassWidgetName,
       );
       _logger.info(
@@ -137,7 +139,7 @@ class HomeWidgetService {
       }
 
       await HomeWidget.updateWidget(
-        androidName: _weekScheduleProvider,
+        qualifiedAndroidName: _weekScheduleProvider,
         iOSName: _iosWeekScheduleWidgetName,
       );
       _logger.info(
