@@ -62,32 +62,6 @@
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
-        <!-- 桌面小组件：下节课。
-             exported=true 必须开，否则 Android 12+ 部分 Launcher（小米/华为）
-             不会在长按 App 图标的菜单里显示这个 widget。 -->
-        <receiver
-            android:name=".widget.NextClassWidgetProvider"
-            android:exported="true"
-            android:label="下节课">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/next_class_widget_info" />
-        </receiver>
-        <!-- 桌面小组件：整周课表。 -->
-        <receiver
-            android:name=".widget.WeekScheduleWidgetProvider"
-            android:exported="true"
-            android:label="本周课表">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/week_schedule_widget_info" />
-        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

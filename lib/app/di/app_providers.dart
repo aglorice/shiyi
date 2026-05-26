@@ -24,7 +24,6 @@ import '../../integrations/school_portal/sso/credential_transformer.dart';
 import '../../integrations/school_portal/sso/session_validator.dart';
 import '../../integrations/school_portal/sso/sso_login_orchestrator.dart';
 import '../../integrations/school_portal/wyu_portal_api.dart';
-import '../../integrations/widgets/home_widget_service.dart';
 import '../../modules/auth/application/login_with_school_portal_use_case.dart';
 import '../../modules/auth/application/logout_use_case.dart';
 import '../../modules/auth/application/refresh_session_use_case.dart';
@@ -80,10 +79,6 @@ final appLoggerProvider = Provider<AppLogger>((ref) => const AppLogger());
 
 final classReminderServiceProvider = Provider<ClassReminderService>(
   (ref) => ClassReminderService(logger: ref.watch(appLoggerProvider)),
-);
-
-final homeWidgetServiceProvider = Provider<HomeWidgetService>(
-  (ref) => HomeWidgetService(logger: ref.watch(appLoggerProvider)),
 );
 
 final scheduleIcsExporterProvider = Provider<ScheduleIcsExporter>(
