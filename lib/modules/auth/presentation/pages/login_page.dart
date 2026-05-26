@@ -49,8 +49,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     // 短信流的错误也用顶部 SnackBar 反馈，避免和账号密码的错误源 UI 打架。
     ref.listen<SmsLoginState>(smsLoginControllerProvider, (prev, next) {
       final msg = next.errorMessage;
@@ -63,90 +61,64 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       }
     });
 
+    // 之前用 Center + SingleChildScrollView 把所有内容塞到中间一坨，
+    // 视觉上 logo 单薄、表单+按钮一片厚重，呈现"头轻脚重"。
+    // 改用 LayoutBuilder + Column + Spacer：
+    //   ┌────────────────────────┐
+    //   │  品牌区（顶部 12% 起）  │ ← 加重：72px logo + 光晕 + 大标题
+    //   │                        │
+    //   │  分段 + 表单（中段）    │
+    //   │                        │
+    //   │  按钮 + 提示（底部）    │
+    //   └────────────────────────┘
+    // 键盘弹起时退化成 SingleChildScrollView，避免溢出。
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 22),
-            child: ConstrainedBox(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final viewInsets = MediaQuery.viewInsetsOf(context).bottom;
+            final keyboardOpen = viewInsets > 0;
+            final content = ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SizedBox(height: 56),
-                  const _LoginHero(),
-                  const SizedBox(height: 36),
-                  _ModeSegmented(
-                    current: _mode,
-                    onChanged: (mode) {
-                      if (mode == _mode) return;
-                      setState(() => _mode = mode);
-                      // 切走前清掉两条流的报错和上一种模式残留的输入焦点。
-                      FocusScope.of(context).unfocus();
-                      if (mode == _LoginMode.sms) {
-                        // 进入短信模式时把账号密码错误清掉。
-                        // AuthController 没有"清错误"接口，
-                        // 视觉上由 _maybeFailureForMode 控制即可。
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 220),
-                    curve: Curves.easeOutCubic,
-                    alignment: Alignment.topCenter,
-                    child: _mode == _LoginMode.password
-                        ? _PasswordForm(
-                            usernameController: _usernameController,
-                            passwordController: _passwordController,
-                            obscurePassword: _obscurePassword,
-                            onToggleObscure: () => setState(
-                              () => _obscurePassword = !_obscurePassword,
-                            ),
-                            onChanged: () => setState(() {}),
-                            onSubmit: _submitPassword,
-                          )
-                        : _SmsForm(
-                            mobileController: _mobileController,
-                            codeController: _codeController,
-                            onChanged: () => setState(() {}),
-                            onSendCode: _onSendCode,
-                          ),
-                  ),
-                  const SizedBox(height: 12),
-                  _MaybeError(mode: _mode),
-                  const SizedBox(height: 28),
-                  _PrimaryButton(
-                    label: _primaryLabel(),
-                    busy: _isBusy(),
-                    onPressed: _isPrimaryEnabled() ? _onPrimary : null,
-                  ),
-                  const SizedBox(height: 16),
-                  Center(
-                    child: Text(
-                      _mode == _LoginMode.password
-                          ? '账号即学号，密码与教务系统一致'
-                          : '统一身份认证绑定的手机号才能收到验证码',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.outline,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-                  Center(
-                    child: Text(
-                      '本应用仅用于学习交流，凭证仅保留在本机',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.outline,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
+              child: _LoginContent(
+                mode: _mode,
+                usernameController: _usernameController,
+                passwordController: _passwordController,
+                obscurePassword: _obscurePassword,
+                mobileController: _mobileController,
+                codeController: _codeController,
+                isBusy: _isBusy(),
+                isPrimaryEnabled: _isPrimaryEnabled(),
+                primaryLabel: _primaryLabel(),
+                onModeChanged: (mode) {
+                  if (mode == _mode) return;
+                  setState(() => _mode = mode);
+                  FocusScope.of(context).unfocus();
+                },
+                onToggleObscure: () => setState(
+                  () => _obscurePassword = !_obscurePassword,
+                ),
+                onFormChanged: () => setState(() {}),
+                onSubmitPassword: _submitPassword,
+                onSendCode: _onSendCode,
+                onPrimary: _onPrimary,
+                compactBrand: keyboardOpen,
               ),
-            ),
-          ),
+            );
+
+            // 没弹键盘：用 Column + Spacer 分段，铺满整屏获得平衡。
+            // 弹了键盘：直接滚动，避免被压扁。
+            if (keyboardOpen) {
+              return SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(22, 24, 22, 24),
+                child: Center(child: content),
+              );
+            }
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 22),
+              child: Center(child: content),
+            );
+          },
         ),
       ),
     );
@@ -291,44 +263,201 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 }
 
-/// 顶部品牌区：小尺寸 logo + 大标题 + 短副标题，向 Apple ID 那种"轻品牌、
-/// 重排版"的层级靠齐——logo 不抢戏，标题字够大。
+/// 重新组织过的登录主体内容。
+///
+/// 通过三段 Spacer 把页面切成"品牌区 / 表单区 / 行动区"三块，让权重在
+/// 垂直方向均衡分布，不再 logo 飘在上半屏、表单+按钮挤在中段那种"头轻
+/// 脚重"的样子。键盘弹起时由父级降级成滚动布局。
+class _LoginContent extends ConsumerWidget {
+  const _LoginContent({
+    required this.mode,
+    required this.usernameController,
+    required this.passwordController,
+    required this.obscurePassword,
+    required this.mobileController,
+    required this.codeController,
+    required this.isBusy,
+    required this.isPrimaryEnabled,
+    required this.primaryLabel,
+    required this.onModeChanged,
+    required this.onToggleObscure,
+    required this.onFormChanged,
+    required this.onSubmitPassword,
+    required this.onSendCode,
+    required this.onPrimary,
+    required this.compactBrand,
+  });
+
+  final _LoginMode mode;
+  final TextEditingController usernameController;
+  final TextEditingController passwordController;
+  final bool obscurePassword;
+  final TextEditingController mobileController;
+  final TextEditingController codeController;
+  final bool isBusy;
+  final bool isPrimaryEnabled;
+  final String primaryLabel;
+  final ValueChanged<_LoginMode> onModeChanged;
+  final VoidCallback onToggleObscure;
+  final VoidCallback onFormChanged;
+  final VoidCallback onSubmitPassword;
+  final Future<void> Function() onSendCode;
+  final VoidCallback onPrimary;
+  final bool compactBrand;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final form = mode == _LoginMode.password
+        ? _PasswordForm(
+            usernameController: usernameController,
+            passwordController: passwordController,
+            obscurePassword: obscurePassword,
+            onToggleObscure: onToggleObscure,
+            onChanged: onFormChanged,
+            onSubmit: onSubmitPassword,
+          )
+        : _SmsForm(
+            mobileController: mobileController,
+            codeController: codeController,
+            onChanged: onFormChanged,
+            onSendCode: onSendCode,
+          );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 顶部留白（约屏幕高度 12%）让品牌不贴顶，但又不至于飘到中央。
+        SizedBox(height: compactBrand ? 12 : 56),
+        _LoginHero(compact: compactBrand),
+        // 品牌 → 分段：宽留白，让上半屏有"呼吸"
+        const Spacer(flex: 4),
+        _ModeSegmented(current: mode, onChanged: onModeChanged),
+        const SizedBox(height: 18),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: form,
+        ),
+        const SizedBox(height: 10),
+        _MaybeError(mode: mode),
+        // 表单 → 主按钮：留一段呼吸，但比上半屏少
+        const Spacer(flex: 3),
+        _PrimaryButton(
+          label: primaryLabel,
+          busy: isBusy,
+          onPressed: isPrimaryEnabled ? onPrimary : null,
+        ),
+        const SizedBox(height: 14),
+        Center(
+          child: Text(
+            mode == _LoginMode.password
+                ? '账号即学号，密码与教务系统一致'
+                : '统一身份认证绑定的手机号才能收到验证码',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.outline,
+            ),
+          ),
+        ),
+        SizedBox(height: compactBrand ? 8 : 24),
+      ],
+    );
+  }
+}
+
+/// 顶部品牌区：72px logo + accent 软光晕 + displaySmall 大标题。
+///
+/// 之前的版本 logo 才 56px、字号也只到 headlineMedium，整块视觉只占
+/// 90 多 px 高度，被下方的表单+按钮压成"头轻脚重"。这里把品牌区做厚到
+/// 接近 200 px，并通过光晕承接整页的 accent 色，让上半屏有质感。
 class _LoginHero extends StatelessWidget {
-  const _LoginHero();
+  const _LoginHero({this.compact = false});
+
+  /// 在键盘弹起 / 屏高吃紧时压缩到极简版（更小 logo + 副标题省掉）。
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final accent = theme.colorScheme.primary;
+    final logoSize = compact ? 52.0 : 76.0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(56 * 0.225),
-          child: Image.asset(
-            'assets/logo/pixel_cat_logo_1024.png',
-            width: 56,
-            height: 56,
-            fit: BoxFit.cover,
+        // logo：用 accent 做一圈软光晕承托，再叠 logo。让上半屏不再"空"。
+        SizedBox(
+          width: logoSize + 36,
+          height: logoSize + 36,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              if (!compact)
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        accent.withValues(alpha: 0.22),
+                        accent.withValues(alpha: 0.0),
+                      ],
+                    ),
+                  ),
+                ),
+              Container(
+                width: logoSize,
+                height: logoSize,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(logoSize * 0.225),
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(logoSize * 0.225),
+                  child: Image.asset(
+                    'assets/logo/pixel_cat_logo_1024.png',
+                    width: logoSize,
+                    height: logoSize,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 18),
+        SizedBox(height: compact ? 14 : 22),
         Text(
           '登录拾邑',
           textAlign: TextAlign.center,
-          style: theme.textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.4,
-            height: 1.1,
+          style: (compact
+                  ? theme.textTheme.headlineMedium
+                  : theme.textTheme.displaySmall)
+              ?.copyWith(
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.6,
+            height: 1.05,
+            color: const Color(0xFF1A1A1A),
           ),
         ),
-        const SizedBox(height: 6),
-        Text(
-          '使用五邑大学统一身份认证',
-          textAlign: TextAlign.center,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+        if (!compact) ...[
+          const SizedBox(height: 8),
+          Text(
+            '使用五邑大学统一身份认证',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              height: 1.4,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
