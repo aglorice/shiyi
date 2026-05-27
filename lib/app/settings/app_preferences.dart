@@ -178,7 +178,7 @@ class AppPreferences {
     this.fontPreset = AppFontPreset.system,
     this.compactMode = false,
     this.highContrast = false,
-    this.showWeekends = true,
+    this.showWeekends = false,
     this.scheduleBackgroundStyle = ScheduleBackgroundStyle.aurora,
     this.scheduleBackgroundOpacity = 0.24,
     this.customScheduleBackgroundPath,
@@ -413,7 +413,7 @@ class AppPreferences {
       fontPreset: _fontPresetFromName(preferences.getString(_fontPresetKey)),
       compactMode: preferences.getBool(_compactModeKey) ?? false,
       highContrast: preferences.getBool(_highContrastKey) ?? false,
-      showWeekends: preferences.getBool(_showWeekendsKey) ?? true,
+      showWeekends: preferences.getBool(_showWeekendsKey) ?? false,
       scheduleBackgroundStyle: _scheduleBackgroundStyleFromName(
         preferences.getString(_scheduleBackgroundStyleKey),
       ).sanitized,

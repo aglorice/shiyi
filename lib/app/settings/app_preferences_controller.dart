@@ -167,7 +167,7 @@ class AppPreferencesController extends Notifier<AppPreferences> {
         fontPreset: AppFontPreset.system,
         compactMode: false,
         highContrast: false,
-        showWeekends: true,
+        showWeekends: false,
         scheduleBackgroundStyle: ScheduleBackgroundStyle.aurora,
         scheduleBackgroundOpacity: 0.24,
         clearCustomScheduleBackgroundPath: true,
