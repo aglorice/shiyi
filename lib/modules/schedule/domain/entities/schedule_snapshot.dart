@@ -300,10 +300,11 @@ class ScheduleSnapshot {
     }
 
     final targetWeek = week ?? displayWeek;
-    return entries.where((item) {
-      return targetWeek >= item.session.weekRange.startWeek &&
-          targetWeek <= item.session.weekRange.endWeek;
-    }).toList();
+    // 用 effectiveWeeks 而不是 weekRange.startWeek..endWeek。
+    // 这样单周/双周（"1-16(单周)"）、停课周（"1-12,14-16"）都能被正确剔除。
+    return entries
+        .where((item) => item.session.effectiveWeeks.contains(targetWeek))
+        .toList();
   }
 
   List<ScheduleEntry> sessionsForDay(
