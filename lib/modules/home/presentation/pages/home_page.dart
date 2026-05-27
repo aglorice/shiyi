@@ -64,6 +64,7 @@ class HomePage extends ConsumerWidget {
                 _TodayCourseCard(
                   scheduleAsync: scheduleAsync,
                   timing: preferences.scheduleTiming,
+                  targetWeek: preferences.computedScheduleWeek,
                 ),
                 const SizedBox(height: 14),
                 _DesktopOverviewGrid(
@@ -93,6 +94,7 @@ class HomePage extends ConsumerWidget {
                 _TodayCourseCard(
                   scheduleAsync: scheduleAsync,
                   timing: preferences.scheduleTiming,
+                  targetWeek: preferences.computedScheduleWeek,
                 ),
                 const SizedBox(height: 10),
                 _MobileOverviewGrid(
@@ -837,10 +839,15 @@ class _TodayCourseCard extends StatelessWidget {
   const _TodayCourseCard({
     required this.scheduleAsync,
     required this.timing,
+    required this.targetWeek,
   });
 
   final AsyncValue<ScheduleSnapshot> scheduleAsync;
   final ScheduleTimingPreference timing;
+
+  /// 目标周次（与课表页 `_effectiveWeek` 一致）。可空：当 snapshot 还没加载好时
+  /// 父级传 null，落到 snapshot.displayWeek 兜底。
+  final int? targetWeek;
 
   @override
   Widget build(BuildContext context) {
@@ -910,9 +917,12 @@ class _TodayCourseCard extends StatelessWidget {
   }
 
   Widget _buildContent(BuildContext context, ScheduleSnapshot snapshot) {
+    // 优先用父级传入的 targetWeek（来自 preferences.computedScheduleWeek，
+    // 与课表页一致），否则才退到服务器返回的 displayWeek。
+    final week = targetWeek ?? snapshot.displayWeek;
     final entries = snapshot.sessionsForDay(
       DateTime.now().weekday,
-      week: snapshot.displayWeek,
+      week: week,
     );
 
     if (entries.isEmpty) {
