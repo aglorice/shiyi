@@ -1744,8 +1744,14 @@ mixin _GymGateway on _GatewayBase implements SchoolPortalGateway {
 
   VenueReview? _mapVenueReview(Map<String, dynamic> map) {
     final id = _pickString(map, const ['WID', 'wid']) ?? '';
-    final userName =
-        _pickString(map, const ['XM', 'userName', 'CZRXM']) ?? '匿名';
+    // 接口实际返回 `YYRXM`（预约人姓名）。之前漏读这个字段，所有评论都
+    // 退化成兜底的 "匿名"。这里把 YYRXM 放在第一优先级，保留 XM/CZRXM
+    // 兼容其他可能的接口形态。
+    final rawUserName = _pickString(
+      map,
+      const ['YYRXM', 'XM', 'userName', 'CZRXM'],
+    );
+    final userName = _maskName(rawUserName);
     final ratingRaw = _pickDouble(map, const ['PF', 'rating', 'SCORE']);
     if (ratingRaw == null) return null;
 
@@ -1759,6 +1765,21 @@ mixin _GymGateway on _GatewayBase implements SchoolPortalGateway {
       content: _pickString(map, const ['PJNR', 'content', 'remark']),
       createdAt: createdAt,
     );
+  }
+
+  /// 中文姓名脱敏：保留首字 + 末字，中间用 `·` 替代。
+  /// - "彭艳婷" → "彭·婷"
+  /// - "陈安娜" → "陈·娜"
+  /// - "袁琳" → "袁·"（两字名只保首字）
+  /// - 单字 / 空 → "匿名"
+  /// 避免出现真名外泄到陌生用户面前，又比"匿名"二字保留了一点存在感。
+  String _maskName(String? raw) {
+    if (raw == null) return '匿名';
+    final name = raw.trim();
+    if (name.isEmpty) return '匿名';
+    if (name.length == 1) return '匿名';
+    if (name.length == 2) return '${name[0]}·';
+    return '${name[0]}·${name[name.length - 1]}';
   }
 
   // -------------------- 搜索模型 / code 候选项解析 --------------------

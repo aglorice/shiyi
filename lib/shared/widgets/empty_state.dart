@@ -111,85 +111,88 @@ class _EmptyStateState extends ConsumerState<EmptyState>
     final petSize = widget.compact ? 56.0 : 84.0;
     final haloSize = petSize + 36;
 
-    return Padding(
-      padding: padding,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          AnimatedBuilder(
-            animation: _controller,
-            builder: (context, _) {
-              final t = _controller.value;
-              final bob = math.sin(t * math.pi * 2);
-              // 0..1 的脉冲，让光晕呼吸感更自然
-              final pulse = (math.sin(t * math.pi * 2 - 0.5) + 1) / 2;
-              return SizedBox(
-                width: haloSize,
-                height: haloSize,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // accent 光晕：从中心 radial 渐变出，随 pulse 微张缩
-                    Container(
-                      width: haloSize * (0.78 + pulse * 0.18),
-                      height: haloSize * (0.78 + pulse * 0.18),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(
-                          colors: [
-                            accent.withValues(alpha: 0.22),
-                            accent.withValues(alpha: 0),
-                          ],
-                          stops: const [0.0, 1.0],
+    // 用 SizedBox(width: double.infinity) + Padding 让组件占满父级可用宽度，
+    // 否则 Column 默认按"最宽子节点"收缩，外层若是 start-aligned 就会出现整块
+    // 靠左的视觉假象（这正是 venue_detail 评论区出现的问题）。
+    return SizedBox(
+      width: double.infinity,
+      child: Padding(
+        padding: padding,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            AnimatedBuilder(
+              animation: _controller,
+              builder: (context, _) {
+                final t = _controller.value;
+                final bob = math.sin(t * math.pi * 2);
+                final pulse = (math.sin(t * math.pi * 2 - 0.5) + 1) / 2;
+                return SizedBox(
+                  width: haloSize,
+                  height: haloSize,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Container(
+                        width: haloSize * (0.78 + pulse * 0.18),
+                        height: haloSize * (0.78 + pulse * 0.18),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              accent.withValues(alpha: 0.22),
+                              accent.withValues(alpha: 0),
+                            ],
+                            stops: const [0.0, 1.0],
+                          ),
                         ),
                       ),
-                    ),
-                    // 像素宠物：上下小幅呼吸
-                    Transform.translate(
-                      offset: Offset(0, bob * 2.2),
-                      child: Transform.scale(
-                        scale: petSize / 72,
-                        child: PixelPet(type: pet),
+                      Transform.translate(
+                        offset: Offset(0, bob * 2.2),
+                        child: Transform.scale(
+                          scale: petSize / 72,
+                          child: PixelPet(type: pet),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-          SizedBox(height: widget.compact ? 12 : 16),
-          Text(
-            widget.title,
-            textAlign: TextAlign.center,
-            style:
-                (widget.compact
-                        ? theme.textTheme.titleSmall
-                        : theme.textTheme.titleMedium)
-                    ?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.2,
-                      height: 1.3,
-                      color: theme.colorScheme.onSurface,
-                    ),
-          ),
-          if (widget.subtitle != null && widget.subtitle!.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              widget.subtitle!,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                height: 1.5,
-                fontWeight: FontWeight.w500,
-              ),
+                    ],
+                  ),
+                );
+              },
             ),
+            SizedBox(height: widget.compact ? 12 : 16),
+            Text(
+              widget.title,
+              textAlign: TextAlign.center,
+              style:
+                  (widget.compact
+                          ? theme.textTheme.titleSmall
+                          : theme.textTheme.titleMedium)
+                      ?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.2,
+                        height: 1.3,
+                        color: theme.colorScheme.onSurface,
+                      ),
+            ),
+            if (widget.subtitle != null && widget.subtitle!.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                widget.subtitle!,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  height: 1.5,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+            if (widget.action != null) ...[
+              SizedBox(height: widget.compact ? 14 : 20),
+              widget.action!,
+            ],
           ],
-          if (widget.action != null) ...[
-            SizedBox(height: widget.compact ? 14 : 20),
-            widget.action!,
-          ],
-        ],
+        ),
       ),
     );
   }
