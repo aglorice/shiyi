@@ -1,4 +1,5 @@
 import '../../../../core/models/data_origin.dart';
+import '../parsers/week_description_parser.dart';
 
 class Term {
   const Term({required this.id, required this.name, this.isSelected = false});
@@ -136,7 +137,7 @@ class ClassSession {
   /// 支持："1-16"、"1-16周"、"1-16(单周)"、"2-16(双周)"、"1,3,5,7"、"1-4,7,9-12"。
   /// 解析不出来时回落到 weekRange 里的连续区间。
   List<int> get effectiveWeeks {
-    final parsed = _parseWeekDescription(weekDescription);
+    final parsed = parseWeekDescription(weekDescription);
     if (parsed != null && parsed.isNotEmpty) {
       return parsed;
     }
@@ -377,55 +378,5 @@ class ScheduleEntry {
 ///
 /// 支持：`1-16`、`1-16周`、`1~16`、`1-16(单周)`、`2-16(双周)`、
 /// `1,3,5,7`、`1-4,7,9-12`，全/半角括号都识别。
-List<int>? _parseWeekDescription(String? raw) {
-  if (raw == null || raw.trim().isEmpty) return null;
-  var text = raw
-      .replaceAll('（', '(')
-      .replaceAll('）', ')')
-      .replaceAll('～', '~')
-      .replaceAll('、', ',')
-      .replaceAll(' ', '')
-      .trim();
-
-  int parityFilter = 0; // 0 不过滤，1 仅奇周，2 仅偶周
-  final parityMatch = RegExp(r'\(([^)]+)\)').firstMatch(text);
-  if (parityMatch != null) {
-    final tag = parityMatch.group(1)!;
-    if (tag.contains('单')) parityFilter = 1;
-    if (tag.contains('双')) parityFilter = 2;
-    text = text.replaceAll(parityMatch.group(0)!, '');
-  }
-  text = text.replaceAll('周', '').replaceAll('教学', '').trim();
-  if (text.isEmpty) return null;
-
-  final weeks = <int>{};
-  for (final segment in text.split(',')) {
-    final seg = segment.trim();
-    if (seg.isEmpty) continue;
-    final range = RegExp(r'^(\d+)\s*[-~]\s*(\d+)$').firstMatch(seg);
-    if (range != null) {
-      final from = int.parse(range.group(1)!);
-      final to = int.parse(range.group(2)!);
-      if (to >= from) {
-        for (var w = from; w <= to; w++) {
-          weeks.add(w);
-        }
-      }
-      continue;
-    }
-    final single = RegExp(r'^\d+$').firstMatch(seg);
-    if (single != null) {
-      weeks.add(int.parse(single.group(0)!));
-    }
-  }
-  if (weeks.isEmpty) return null;
-
-  Iterable<int> result = weeks;
-  if (parityFilter == 1) {
-    result = weeks.where((w) => w.isOdd);
-  } else if (parityFilter == 2) {
-    result = weeks.where((w) => w.isEven);
-  }
-  final list = result.toList()..sort();
-  return list.isEmpty ? null : list;
-}
+// _parseWeekDescription 已抽到 lib/modules/schedule/domain/parsers/
+// week_description_parser.dart，方便单测。这里保留注释占位。
