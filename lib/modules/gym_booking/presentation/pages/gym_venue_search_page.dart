@@ -7,6 +7,7 @@ import '../../../../app/di/app_providers.dart';
 import '../../../../core/error/error_display.dart';
 import '../../../../core/result/result.dart';
 import '../../../../shared/widgets/constrained_body.dart';
+import '../../../../shared/widgets/empty_state.dart';
 import '../../../../shared/widgets/surface_card.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../domain/entities/gym_booking_overview.dart';
@@ -601,24 +602,11 @@ class _SearchEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SurfaceCard(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 36),
-        child: Column(
-          children: [
-            Icon(
-              Icons.search_off_rounded,
-              size: 38,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              '没有找到符合条件的场地',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
+      padding: EdgeInsets.zero,
+      child: const EmptyState(
+        title: '没有找到符合条件的场地',
+        subtitle: '换个时间或去掉部分筛选条件试试。',
+        mood: EmptyStateMood.empty,
       ),
     );
   }

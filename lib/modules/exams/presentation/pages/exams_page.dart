@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../../shared/widgets/app_snackbar.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/constrained_body.dart';
+import '../../../../shared/widgets/empty_state.dart';
 import '../../domain/entities/exam_schedule_snapshot.dart';
 import '../controllers/exams_controller.dart';
 
@@ -548,43 +549,10 @@ class _ExamDetailBlock extends StatelessWidget {
 class _EmptyExamsState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.88),
-        borderRadius: BorderRadius.circular(28),
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: const Color(0xFF7C4A34).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: const Icon(
-              Icons.event_available_outlined,
-              color: Color(0xFF7C4A34),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            '暂无考试安排',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '当前没有查询到考试安排。',
-            textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607172)),
-          ),
-        ],
-      ),
+    return const EmptyState(
+      title: '暂无考试安排',
+      subtitle: '当前学期还没有查询到考试安排，开考前会自动同步。',
+      mood: EmptyStateMood.rest,
     );
   }
 }

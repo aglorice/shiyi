@@ -8,6 +8,7 @@ import '../../../../app/settings/app_preferences_controller.dart';
 import '../../../../app/settings/schedule_timing_preference.dart';
 import '../../../../shared/widgets/app_snackbar.dart';
 import '../../../../shared/widgets/async_value_view.dart';
+import '../../../../shared/widgets/empty_state.dart';
 import '../../../../shared/widgets/schedule_background.dart';
 import '../../domain/entities/schedule_snapshot.dart';
 import '../controllers/schedule_controller.dart';
@@ -1226,43 +1227,10 @@ class _EmptyWeekState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.76),
-        borderRadius: BorderRadius.circular(28),
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 58,
-            height: 58,
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F6A71).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: const Icon(
-              Icons.grid_view_rounded,
-              color: Color(0xFF0F6A71),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            '这一周没有可展示的课程',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '当前学期没有有效周课表数据，可以切到“今日”模式或重新同步。',
-            textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607172)),
-          ),
-        ],
-      ),
+    return const EmptyState(
+      title: '这一周没课',
+      subtitle: '可以试着切到「今日」模式或下拉刷新一下课表。',
+      mood: EmptyStateMood.rest,
     );
   }
 }
@@ -1945,43 +1913,10 @@ class _EmptyTodayState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.76),
-        borderRadius: BorderRadius.circular(28),
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F6A71).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: const Icon(
-              Icons.wb_sunny_outlined,
-              color: Color(0xFF0F6A71),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            '今天没有课程',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '可以切换到“整周”查看这一学期的完整周课表。',
-            textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607172)),
-          ),
-        ],
-      ),
+    return const EmptyState(
+      title: '今天没课，好好休息',
+      subtitle: '想看完整一周可以切到「整周」模式。',
+      mood: EmptyStateMood.rest,
     );
   }
 }

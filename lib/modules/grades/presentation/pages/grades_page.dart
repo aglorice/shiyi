@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../../shared/widgets/app_snackbar.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/constrained_body.dart';
+import '../../../../shared/widgets/empty_state.dart';
 import '../../../../shared/widgets/surface_card.dart';
 import '../../../schedule/domain/entities/schedule_snapshot.dart';
 import '../../domain/entities/grades_snapshot.dart';
@@ -382,40 +383,13 @@ class _EmptyTermState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SurfaceCard(
-      child: Column(
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: Theme.of(
-                context,
-              ).colorScheme.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Icon(
-              Icons.school_outlined,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            isAllTerms ? '暂无成绩' : '$termName 暂无成绩',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            isAllTerms
-                ? '当前没有可展示的成绩记录，可以稍后刷新重试。'
-                : '这个学期目前没有可展示的成绩记录，可以切回全部学期查看。',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
+      padding: EdgeInsets.zero,
+      child: EmptyState(
+        title: isAllTerms ? '还没有成绩' : '$termName 还没出成绩',
+        subtitle: isAllTerms
+            ? '当前没有可展示的成绩记录，下拉刷新试试。'
+            : '这个学期还没出成绩，可以切回「全部学期」查看历史。',
+        mood: EmptyStateMood.rest,
       ),
     );
   }

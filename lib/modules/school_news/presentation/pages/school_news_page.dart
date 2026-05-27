@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../shared/widgets/async_value_view.dart';
+import '../../../../shared/widgets/empty_state.dart';
 import '../../domain/entities/school_news.dart';
 import '../controllers/school_news_controller.dart';
 import '../models/school_news_feed_state.dart';
@@ -71,7 +72,12 @@ class _SchoolNewsPageState extends ConsumerState<SchoolNewsPage> {
               slivers: [
                 if (state.items.isEmpty)
                   const SliverFillRemaining(
-                    child: Center(child: Text('暂无学校要闻')),
+                    hasScrollBody: false,
+                    child: EmptyState(
+                      title: '还没有学校要闻',
+                      subtitle: '下拉刷新一下，新发布的要闻会自动出现。',
+                      mood: EmptyStateMood.empty,
+                    ),
                   )
                 else
                   SliverPadding(

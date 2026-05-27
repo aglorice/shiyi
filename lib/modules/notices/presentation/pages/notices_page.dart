@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../shared/widgets/async_value_view.dart';
+import '../../../../shared/widgets/empty_state.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../domain/entities/campus_notice.dart';
 import '../controllers/graduate_notices_controller.dart';
@@ -487,29 +488,16 @@ class _EmptyFeedState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '$label暂无内容',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          if (canSync) ...[
-            const SizedBox(height: 12),
-            FilledButton.tonal(
+    return EmptyState(
+      title: '$label还没有新内容',
+      subtitle: canSync ? '点下面同步一次试试。' : '稍后再来看看，有新通知会自动同步。',
+      mood: EmptyStateMood.empty,
+      action: canSync
+          ? FilledButton.tonal(
               onPressed: isSyncing ? null : onSync,
-              child: Text(isSyncing ? '同步中...' : '加载完整列表'),
-            ),
-          ],
-        ],
-      ),
+              child: Text(isSyncing ? '同步中…' : '加载完整列表'),
+            )
+          : null,
     );
   }
 }

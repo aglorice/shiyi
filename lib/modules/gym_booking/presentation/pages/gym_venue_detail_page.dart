@@ -9,6 +9,7 @@ import '../../../../core/result/result.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/app_snackbar.dart';
 import '../../../../shared/widgets/constrained_body.dart';
+import '../../../../shared/widgets/empty_state.dart';
 import '../../../../shared/widgets/surface_card.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../domain/entities/gym_booking_overview.dart';
@@ -425,16 +426,11 @@ class _BookingPanel extends StatelessWidget {
               ),
             )
           else if (venue == null || slots.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              child: Center(
-                child: Text(
-                  '该日期暂无可预约时段',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
+            const EmptyState(
+              title: '这一天没有可预约的时段',
+              subtitle: '换一天看看，或者下拉刷新一次。',
+              mood: EmptyStateMood.empty,
+              compact: true,
             )
           else
             Column(
@@ -612,16 +608,11 @@ class _ReviewPanel extends StatelessWidget {
               ),
             )
           else if (reviews.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              child: Center(
-                child: Text(
-                  '暂无评论',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
+            const EmptyState(
+              title: '还没有评价',
+              subtitle: '预约结束后可以来留下你的体验。',
+              mood: EmptyStateMood.empty,
+              compact: true,
             )
           else ...[
             for (var i = 0; i < reviews.length; i++) ...[

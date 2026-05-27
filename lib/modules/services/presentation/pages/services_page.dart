@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/constrained_body.dart';
+import '../../../../shared/widgets/empty_state.dart';
 import '../../domain/entities/service_card_data.dart';
 import '../controllers/services_controller.dart';
 
@@ -24,7 +25,11 @@ class ServicesPage extends ConsumerWidget {
           loadingLabel: '加载服务列表',
           dataBuilder: (state) {
             if (state.groups.isEmpty) {
-              return const Center(child: Text('暂无服务数据'));
+              return const EmptyState(
+                title: '暂无服务',
+                subtitle: '可能是这个学期还没开放，可以下拉刷新一次。',
+                mood: EmptyStateMood.empty,
+              );
             }
             return RefreshIndicator(
               onRefresh: () =>

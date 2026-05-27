@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../shared/widgets/app_snackbar.dart';
+import '../../../../shared/widgets/empty_state.dart';
 import '../../../../shared/widgets/module_error_state.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../domain/entities/user_log_entry.dart';
@@ -52,15 +53,12 @@ class OnlineSessionsPage extends ConsumerWidget {
             horizontal: AppSpacing.pageH,
             vertical: AppSpacing.lg,
           ),
-          children: [
-            const SizedBox(height: 80),
-            Center(
-              child: Text(
-                '暂无在线会话',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
+          children: const [
+            SizedBox(height: 40),
+            EmptyState(
+              title: '当前没有在线会话',
+              subtitle: '其他设备登录时会出现在这里。',
+              mood: EmptyStateMood.empty,
             ),
           ],
         ),

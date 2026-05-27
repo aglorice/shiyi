@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../shared/widgets/empty_state.dart';
 import '../../../../shared/widgets/module_error_state.dart';
 import '../../domain/entities/user_log_entry.dart';
 import '../controllers/user_logs_controller.dart';
@@ -76,14 +77,11 @@ class _LogListViewState extends State<LogListView> {
             vertical: AppSpacing.lg,
           ),
           children: [
-            const SizedBox(height: 80),
-            Center(
-              child: Text(
-                widget.emptyHint,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
+            const SizedBox(height: 24),
+            EmptyState(
+              title: widget.emptyHint,
+              subtitle: '下拉一次试试，新的记录会出现在这里。',
+              mood: EmptyStateMood.empty,
             ),
           ],
         ),
